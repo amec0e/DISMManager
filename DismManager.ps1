@@ -22,8 +22,12 @@ $Global:RemovedDrivers = @()
 $Global:RemovedAppxPackages = @()
 $Global:AddedAppxPackages = @()
 $Global:AppxPackagePath = ""
-$Global:ConversionBackupPath = ""
+$Global:BackupPath = ""
 $Global:WimlibPath = ""
+$Global:DesktopFilesPath = ""
+$Global:RemovedDesktopFiles = @()
+$Global:SelectedDesktopFiles = @()
+$Global:ShouldAddDesktopFiles = $false
 # Generic Volume License Keys (RTMs) - RTM Generic Digital Keys
 $Global:RTMKeys = @{
     "Windows 11 Home" = "YTMG3-N6DKC-DKB77-7M9GH-8HVX7"
@@ -217,9 +221,9 @@ function Show-Menu {
     if ($Global:MountPath) {
         $mountEmpty = Test-MountPathEmpty
         if ($mountEmpty) {
-            Write-Host "$Global:MountPath (Empty)" -ForegroundColor Green
+            Write-Host "${Global:MountPath} (Empty)" -ForegroundColor Green
         } else {
-            Write-Host "$Global:MountPath (IN USE - May need cleanup)" -ForegroundColor Red
+            Write-Host "${Global:MountPath} (IN USE - May need cleanup)" -ForegroundColor Red
         }
     } else {
         Write-Host "Not Set" -ForegroundColor Red
@@ -242,9 +246,15 @@ function Show-Menu {
     } else {
         Write-Host "Not Set" -ForegroundColor Yellow
     }
-    Write-Host "Conversion Backup Path: " -NoNewline
-    if ($Global:ConversionBackupPath) {
-        Write-Host $Global:ConversionBackupPath -ForegroundColor Green
+    Write-Host "Desktop Files Path: " -NoNewline
+    if ($Global:DesktopFilesPath) {
+        Write-Host $Global:DesktopFilesPath -ForegroundColor Green
+    } else {
+        Write-Host "Not Set" -ForegroundColor Yellow
+    }
+    Write-Host "Backup Path: " -NoNewline
+    if ($Global:BackupPath) {
+        Write-Host $Global:BackupPath -ForegroundColor Green
     } else {
         Write-Host "Not Set" -ForegroundColor Yellow
     }
@@ -289,25 +299,13 @@ function Show-Menu {
     Write-Host "6. File Conversion (WIM/ESD)" -ForegroundColor $(if ($requiredPathsSet -and $mountPathEmpty) { "Yellow" } else { "DarkGray" })
     Write-Host "7. Create ISO (UEFI/BIOS/Hybrid)" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
     Write-Host "8. View WIM/ESD Information" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
-    Write-Host "9. Mount Index" -ForegroundColor $(if ($requiredPathsSet -and $mountPathEmpty) { "Yellow" } else { "DarkGray" })
-    Write-Host "10. Cleanup/Unmount" -ForegroundColor $(if ($Global:MountPath -and -not $mountPathEmpty) { "Yellow" } else { "DarkGray" })
-    Write-Host "11. Exit" -ForegroundColor Red
+    Write-Host "9. Manage Desktop Files" -ForegroundColor $(if ($requiredPathsSet -and $mountPathEmpty) { "Yellow" } else { "DarkGray" })
+    Write-Host "10. Manage Registry" -ForegroundColor $(if ($requiredPathsSet -and $mountPathEmpty) { "Yellow" } else { "DarkGray" })
+    Write-Host "11. Mount Index" -ForegroundColor $(if ($requiredPathsSet -and $mountPathEmpty) { "Yellow" } else { "DarkGray" })
+    Write-Host "12. Cleanup/Unmount" -ForegroundColor $(if ($Global:MountPath -and -not $mountPathEmpty) { "Yellow" } else { "DarkGray" })
+    Write-Host "13. Exit" -ForegroundColor Red
     Write-Host ""
-    Write-Host "Select an option (1-11): " -NoNewline -ForegroundColor White
-}
-
-function Show-ConfigSubmenu {
-    Write-Host "`nConfiguration Settings:" -ForegroundColor Cyan
-    Write-Host "1. Set Extracted ISO Path"
-    Write-Host "2. Set Mount Path"
-    Write-Host "3. Set ISO Output Path"
-    Write-Host "4. Set Driver Path"
-    Write-Host "5. Set Package Path"
-    Write-Host "6. Set Conversion Backup Path"
-    Write-Host "7. Toggle Force Unsigned Drivers"
-    Write-Host "8. Return to Main Menu" -ForegroundColor Red
-    $choice = Read-Host "Select option (1-8)"
-    return $choice
+    Write-Host "Select an option (1-13): " -NoNewline -ForegroundColor White
 }
 
 function Manage-Configuration {
@@ -337,9 +335,9 @@ function Manage-Configuration {
         if ($Global:MountPath) {
             $mountEmpty = Test-MountPathEmpty
             if ($mountEmpty) {
-                Write-Host "$Global:MountPath (Empty)" -ForegroundColor Green
+                Write-Host "${Global:MountPath} (Empty)" -ForegroundColor Green
             } else {
-                Write-Host "$Global:MountPath (IN USE - May need cleanup)" -ForegroundColor Red
+                Write-Host "${Global:MountPath} (IN USE - May need cleanup)" -ForegroundColor Red
             }
         } else {
             Write-Host "Not Set" -ForegroundColor Red
@@ -366,9 +364,16 @@ function Manage-Configuration {
             Write-Host "Not Set" -ForegroundColor Yellow
         }
         
-        Write-Host "Conversion Backup Path: " -NoNewline
-        if ($Global:ConversionBackupPath) {
-            Write-Host $Global:ConversionBackupPath -ForegroundColor Green
+        Write-Host "Desktop Files Path: " -NoNewline
+        if ($Global:DesktopFilesPath) {
+            Write-Host $Global:DesktopFilesPath -ForegroundColor Green
+        } else {
+            Write-Host "Not Set" -ForegroundColor Yellow
+        }
+        
+        Write-Host "Backup Path: " -NoNewline
+        if ($Global:BackupPath) {
+            Write-Host $Global:BackupPath -ForegroundColor Green
         } else {
             Write-Host "Not Set" -ForegroundColor Yellow
         }
@@ -401,12 +406,13 @@ function Manage-Configuration {
         Write-Host "3. Set ISO Output Path" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
         Write-Host "4. Set Driver Path" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
         Write-Host "5. Set Package Path" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
-        Write-Host "6. Set Conversion Backup Path" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
-        Write-Host "7. Setup Wimlib (Advanced Features)" -ForegroundColor Cyan
-        Write-Host "8. Toggle Force Unsigned Drivers" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
-        Write-Host "9. Return to Main Menu" -ForegroundColor Red
+        Write-Host "6. Set Backup Path" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
+        Write-Host "7. Set Desktop Files Path" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
+        Write-Host "8. Setup Wimlib (Advanced Features)" -ForegroundColor Cyan
+        Write-Host "9. Toggle Force Unsigned Drivers" -ForegroundColor $(if ($requiredPathsSet) { "Yellow" } else { "DarkGray" })
+        Write-Host "10. Return to Main Menu" -ForegroundColor Red
         Write-Host ""
-        Write-Host "Select an option (1-9): " -NoNewline -ForegroundColor White
+        Write-Host "Select an option (1-10): " -NoNewline -ForegroundColor White
         
         $choice = Read-Host
         
@@ -445,8 +451,16 @@ function Manage-Configuration {
                     Set-ConversionBackupPath
                 }
             }
-            "7" { Manage-WimlibSetup }
-            "8" { 
+            "7" { 
+                if (-not $requiredPathsSet) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Set-DesktopFilesPath
+                }
+            }
+            "8" { Manage-WimlibSetup }
+            "9" { 
                 if (-not $requiredPathsSet) {
                     Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
                     Read-Host "Press Enter to continue"
@@ -454,7 +468,7 @@ function Manage-Configuration {
                     Toggle-ForceUnsignedDrivers
                 }
             }
-            "9" { return }
+            "10" { return }
             default { 
                 Write-Host "Invalid selection." -ForegroundColor Red
                 Start-Sleep -Seconds 2
@@ -476,7 +490,7 @@ function Test-DirectoryPath {
         try {
             $actualPath = (Get-Item $expandedPath).FullName
             if ($actualPath -cne $expandedPath) {
-                Write-Host "Path found (corrected casing): $actualPath" -ForegroundColor Cyan
+                Write-Host "Path found (corrected casing): ${actualPath}" -ForegroundColor Cyan
             }
             
             return $actualPath
@@ -485,7 +499,7 @@ function Test-DirectoryPath {
             return $expandedPath
         }
     } else {
-        Write-Host "$PathType path does not exist: $expandedPath" -ForegroundColor Red
+        Write-Host "$PathType path does not exist: ${expandedPath}" -ForegroundColor Red
         return $null
     }
 }
@@ -561,7 +575,7 @@ function Set-MountPath {
     $validatedPath = Test-DirectoryPath -Path $path -PathType "Mount"
     if ($validatedPath) {
         $Global:MountPath = $validatedPath
-        Write-Host "Mount path set to: $validatedPath" -ForegroundColor Green
+        Write-Host "Mount path set to: ${validatedPath}" -ForegroundColor Green
     } else {
         Write-Host "Please provide a valid existing directory path when ready." -ForegroundColor Red
     }
@@ -571,7 +585,7 @@ function Set-MountPath {
 
 function Set-DriverPath {
     $currentPath = if ($Global:DriverPath) { " (Current: $Global:DriverPath)" } else { "" }
-    $path = Read-Host "Enter the path to your drivers folder$currentPath"
+    $path = Read-Host "Enter the path to your drivers folder${currentPath}"
     
     if (-not $path -and $Global:DriverPath) {
         Write-Host "Keeping current driver path: $Global:DriverPath" -ForegroundColor Green
@@ -579,7 +593,7 @@ function Set-DriverPath {
         $validatedPath = Test-DirectoryPath -Path $path -PathType "Driver"
         if ($validatedPath) {
             $Global:DriverPath = $validatedPath
-            Write-Host "Driver path set to: $validatedPath" -ForegroundColor Green
+            Write-Host "Driver path set to: ${validatedPath}" -ForegroundColor Green
         } else {
             Write-Host "Please provide a valid existing directory path when ready." -ForegroundColor Red
         }
@@ -590,7 +604,7 @@ function Set-DriverPath {
 
 function Set-PackagePath {
     $currentPath = if ($Global:PackagePath) { " (Current: $Global:PackagePath)" } else { "" }
-    $path = Read-Host "Enter the path to your packages folder$currentPath"
+    $path = Read-Host "Enter the path to your packages folder${currentPath}"
     
     if (-not $path -and $Global:PackagePath) {
         Write-Host "Keeping current package path: $Global:PackagePath" -ForegroundColor Green
@@ -598,7 +612,36 @@ function Set-PackagePath {
         $validatedPath = Test-DirectoryPath -Path $path -PathType "Package"
         if ($validatedPath) {
             $Global:PackagePath = $validatedPath
-            Write-Host "Package path set to: $validatedPath" -ForegroundColor Green
+            Write-Host "Package path set to: ${validatedPath}" -ForegroundColor Green
+        } else {
+            Write-Host "Please provide a valid existing directory path when ready." -ForegroundColor Red
+        }
+    }
+    
+    Read-Host "Press Enter to continue"
+}
+
+function Set-DesktopFilesPath {
+    if (-not (Test-RequiredPaths)) {
+        Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    Write-Host "`nDesktop Files Path Configuration" -ForegroundColor Cyan
+    Write-Host "This path will contain files that you want to copy to desktop folders in Windows images." -ForegroundColor Gray
+    Write-Host ""
+    
+    $currentPath = if ($Global:DesktopFilesPath) { " (Current: $Global:DesktopFilesPath)" } else { "" }
+    $path = Read-Host "Enter the path to your desktop files folder${currentPath}"
+    
+    if (-not $path -and $Global:DesktopFilesPath) {
+        Write-Host "Keeping current desktop files path: $Global:DesktopFilesPath" -ForegroundColor Green
+    } else {
+        $validatedPath = Test-DirectoryPath -Path $path -PathType "Desktop Files"
+        if ($validatedPath) {
+            $Global:DesktopFilesPath = $validatedPath
+            Write-Host "Desktop files path set to: ${validatedPath}" -ForegroundColor Green
         } else {
             Write-Host "Please provide a valid existing directory path when ready." -ForegroundColor Red
         }
@@ -615,7 +658,7 @@ function Set-ISOOutputPath {
     }
     
     $currentPath = if ($Global:ISOOutputPath) { " (Current: $Global:ISOOutputPath)" } else { "" }
-    $path = Read-Host "Enter the output path for the ISO file (including filename.iso)$currentPath"
+    $path = Read-Host "Enter the output path for the ISO file (including filename.iso)${currentPath}"
     
     if (-not $path -and $Global:ISOOutputPath) {
         Write-Host "Keeping current ISO output path: $Global:ISOOutputPath" -ForegroundColor Green
@@ -627,9 +670,9 @@ function Set-ISOOutputPath {
             $directory = Split-Path $expandedPath -Parent
             if ($directory -and (Test-Path $directory)) {
                 $Global:ISOOutputPath = $expandedPath
-                Write-Host "ISO output path set to: $expandedPath" -ForegroundColor Green
+                Write-Host "ISO output path set to: ${expandedPath}" -ForegroundColor Green
             } else {
-                Write-Host "Output directory does not exist: $directory" -ForegroundColor Red
+                Write-Host "Output directory does not exist: ${directory}" -ForegroundColor Red
                 Write-Host "Please provide a valid path when ready." -ForegroundColor Red
             }
         } else {
@@ -647,20 +690,20 @@ function Set-ConversionBackupPath {
         return
     }
     
-    Write-Host "`nConversion Backup Path Configuration" -ForegroundColor Cyan
+    Write-Host "`nBackup Path Configuration" -ForegroundColor Cyan
     Write-Host "This path will be used as the default location for backup files during WIM/ESD conversions." -ForegroundColor Gray
     Write-Host ""
     
-    $currentPath = if ($Global:ConversionBackupPath) { " (Current: $Global:ConversionBackupPath)" } else { "" }
-    $path = Read-Host "Enter the path for conversion backup files$currentPath"
+    $currentPath = if ($Global:BackupPath) { " (Current: $Global:BackupPath)" } else { "" }
+    $path = Read-Host "Enter the path for backup files${currentPath}"
     
-    if (-not $path -and $Global:ConversionBackupPath) {
-        Write-Host "Keeping current conversion backup path: $Global:ConversionBackupPath" -ForegroundColor Green
+    if (-not $path -and $Global:BackupPath) {
+        Write-Host "Keeping current Backup Path: $Global:BackupPath" -ForegroundColor Green
     } else {
         $validatedPath = Test-DirectoryPath -Path $path -PathType "Conversion Backup"
         if ($validatedPath) {
-            $Global:ConversionBackupPath = $validatedPath
-            Write-Host "Conversion backup path set to: $validatedPath" -ForegroundColor Green
+            $Global:BackupPath = $validatedPath
+            Write-Host "Backup Path set to: ${validatedPath}" -ForegroundColor Green
             Write-Host "This will be used as the default backup location for WIM/ESD conversions." -ForegroundColor Cyan
         } else {
             Write-Host "Please provide a valid existing directory path when ready." -ForegroundColor Red
@@ -853,6 +896,266 @@ function Get-WimIndexes {
     return $indexes
 }
 
+function Add-FilesToDesktop {
+    if (-not (Test-RequiredPaths)) {
+        Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    if (-not (Test-MountPathEmpty)) {
+        Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    Write-Host "`nDesktop Files Addition Options:" -ForegroundColor Cyan
+    Write-Host "1. Add to specific index"
+    Write-Host "2. Add to all indexes"
+    $choice = Read-Host "Select option (1-2)"
+    
+    $Global:CurrentOperation = "Adding Desktop Files"
+    $Global:CleanupRequired = $true
+    
+    try {
+        if ($choice -eq "1") {
+            Write-Host "`nAvailable indexes in WIM/ESD:" -ForegroundColor Cyan
+            try {
+                dism /Get-WimInfo /WimFile:$Global:InstallWimPath
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Host "Error getting WIM/ESD information." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                    return
+                }
+            } catch {
+                Write-Host "Error getting WIM/ESD information: $($_.Exception.Message)" -ForegroundColor Red
+                Read-Host "Press Enter to continue"
+                return
+            }
+            
+            $indexNumber = Read-Host "`nEnter the index number"
+            Add-FilesToDesktopForIndex -IndexNumber $indexNumber
+        } elseif ($choice -eq "2") {
+            $indexes = Get-WimIndexes
+            foreach ($index in $indexes) {
+                Add-FilesToDesktopForIndex -IndexNumber $index
+            }
+        } else {
+            Write-Host "Invalid selection." -ForegroundColor Red
+        }
+    } catch {
+        Write-Host "Error during desktop files addition: $($_.Exception.Message)" -ForegroundColor Red
+    } finally {
+        $Global:CurrentOperation = "None"
+        $Global:CleanupRequired = $false
+    }
+    
+    Read-Host "Press Enter to continue"
+}
+
+function Add-FilesToDesktopForIndex {
+    param([string]$IndexNumber)
+    
+    # Validate desktop files path BEFORE mounting
+    $sourceFiles = Get-DesktopFilesToCopy
+    if (-not $sourceFiles -or $sourceFiles.Count -eq 0) {
+        Write-Host "No files selected for copying." -ForegroundColor Yellow
+        return
+    }
+    
+    try {
+        Write-Host "`nMounting WIM/ESD index ${IndexNumber}..." -ForegroundColor Yellow
+        $Global:CurrentOperation = "Mounting"
+        dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$IndexNumber /MountDir:$Global:MountPath /CheckIntegrity
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to mount WIM/ESD index ${IndexNumber}"
+        }
+        
+        # Find desktop folders and copy files
+        $desktopFolders = Find-DesktopFolders -MountPath $Global:MountPath
+        
+        if ($desktopFolders.Count -eq 0) {
+            Write-Host "No desktop folders found in mounted image." -ForegroundColor Yellow
+        } else {
+            Copy-FilesToDesktopFolders -SourceFiles $sourceFiles -DesktopFolders $desktopFolders -IndexNumber $IndexNumber
+        }
+        
+        Write-Host "Committing changes and unmounting..." -ForegroundColor Yellow
+        $Global:CurrentOperation = "Unmounting"
+        dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "SUCCESS: Desktop files added to index ${IndexNumber}" -ForegroundColor Green
+        } else {
+            throw "Failed to commit changes for index ${IndexNumber}"
+        }
+        
+    } catch {
+        Write-Host "ERROR processing index ${IndexNumber} : $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
+        try {
+            dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+        } catch {
+            Write-Host "Manual cleanup may be required." -ForegroundColor Red
+        }
+    }
+}
+
+function Get-DesktopFilesToCopy {
+    $desktopFilesPath = $Global:DesktopFilesPath
+    if (-not $desktopFilesPath) {
+        do {
+            $path = Read-Host "Enter the path to your desktop files folder"
+            $validatedPath = Test-DirectoryPath -Path $path -PathType "Desktop Files"
+            if ($validatedPath) {
+                $desktopFilesPath = $validatedPath
+                $save = Read-Host "Save this desktop files path for future use? (Y/n)"
+                if ($save.ToLower() -ne 'n') {
+                    $Global:DesktopFilesPath = $desktopFilesPath
+                }
+                break
+            } else {
+                Write-Host "Please enter a valid existing directory path." -ForegroundColor Red
+            }
+        } while ($true)
+    } else {
+        Write-Host "Using saved desktop files path: ${desktopFilesPath}" -ForegroundColor Green
+        $useExisting = Read-Host "Use this path? (Y/n)"
+        if ($useExisting.ToLower() -eq 'n') {
+            do {
+                $path = Read-Host "Enter the path to your desktop files folder"
+                $validatedPath = Test-DirectoryPath -Path $path -PathType "Desktop Files"
+                if ($validatedPath) {
+                    $desktopFilesPath = $validatedPath
+                    break
+                } else {
+                    Write-Host "Please enter a valid existing directory path." -ForegroundColor Red
+                }
+            } while ($true)
+        }
+    }
+    
+    Write-Host "`nScanning for files in: ${desktopFilesPath}" -ForegroundColor Yellow
+    $allFiles = Get-ChildItem -Path $desktopFilesPath -File -Recurse -ErrorAction SilentlyContinue
+    
+    if ($allFiles.Count -eq 0) {
+        Write-Host "No files found in: ${desktopFilesPath}" -ForegroundColor Red
+        return @()
+    }
+    
+    Write-Host "Found $($allFiles.Count) file(s):" -ForegroundColor Green
+    foreach ($file in $allFiles) {
+        $relativePath = $file.FullName.Substring($desktopFilesPath.Length + 1)
+        Write-Host "  - ${relativePath}" -ForegroundColor Gray
+    }
+    
+    $proceed = Read-Host "`nProceed with copying these files to desktop folders? (Y/n)"
+    if ($proceed.ToLower() -eq 'n') {
+        return @()
+    }
+    
+    return $allFiles
+}
+
+function Find-DesktopFolders {
+    param([string]$MountPath)
+    
+    $desktopFolders = @()
+    
+    # Only target Default user desktop folder
+    $defaultDesktopPath = "$MountPath\Users\Default\Desktop"
+    
+    if (Test-Path $defaultDesktopPath) {
+        $desktopFolders += $defaultDesktopPath
+        Write-Host "Found desktop folder: Users\Default\Desktop" -ForegroundColor Green
+    } else {
+        # Create the desktop folder if it doesn't exist
+        try {
+            New-Item -ItemType Directory -Path $defaultDesktopPath -Force | Out-Null
+            $desktopFolders += $defaultDesktopPath
+            Write-Host "Created desktop folder: Users\Default\Desktop" -ForegroundColor Cyan
+        } catch {
+            Write-Host "Warning: Could not create desktop folder: Users\Default\Desktop" -ForegroundColor Yellow
+        }
+    }
+    
+    return $desktopFolders
+}
+
+function Copy-FilesToDesktopFolders {
+    param(
+        [array]$SourceFiles,
+        [array]$DesktopFolders,
+        [string]$IndexNumber
+    )
+    
+    $sourceBasePath = if ($Global:DesktopFilesPath) { $Global:DesktopFilesPath } else { (Get-Location).Path }
+    
+    Write-Host "`nCopying files to desktop folders for index ${IndexNumber}..." -ForegroundColor Yellow
+    
+    foreach ($desktopFolder in $DesktopFolders) {
+        $folderName = ($desktopFolder -split '\\')[-2..-1] -join '\'
+        Write-Host "`nTarget: ${folderName}" -ForegroundColor Cyan
+        
+        $successCount = 0
+        $failCount = 0
+        
+        foreach ($file in $SourceFiles) {
+            try {
+                # Preserve directory structure if files are in subdirectories
+                $relativePath = $file.FullName.Substring($sourceBasePath.Length + 1)
+                $targetFile = Join-Path $desktopFolder $relativePath
+                $targetDir = Split-Path $targetFile -Parent
+                
+                # Create target directory if it doesn't exist
+                if (-not (Test-Path $targetDir)) {
+                    New-Item -ItemType Directory -Path $targetDir -Force | Out-Null
+                }
+                
+                Copy-Item -Path $file.FullName -Destination $targetFile -Force
+                Write-Host "  ✓ ${relativePath}" -ForegroundColor Green
+                $successCount++
+                
+            } catch {
+                Write-Host "  ✗ $($file.Name) - Error: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        Write-Host "  Summary: ${successCount} copied, $failCount failed" -ForegroundColor $(if ($failCount -eq 0) { "Green" } else { "Yellow" })
+    }
+}
+
+function Add-DesktopFilesToPackageManagement {
+    param([string]$ImagePath, [bool]$IsMultiIndex, [bool]$IsFirstIndex = $true)
+    
+    if ($IsMultiIndex -and -not $IsFirstIndex) {
+        # For subsequent indexes in multi-index mode, we don't need to ask again
+        # The files are already determined from the first index
+        return
+    }
+    
+    Write-Host "`nAdding Desktop Files" -ForegroundColor Cyan
+    
+    # Get source files using the same logic as the standalone function
+    $sourceFiles = Get-DesktopFilesToCopy
+    if (-not $sourceFiles -or $sourceFiles.Count -eq 0) {
+        Write-Host "No files selected for copying to desktop." -ForegroundColor Yellow
+        return
+    }
+    
+    # Find desktop folders and copy files
+    $desktopFolders = Find-DesktopFolders -MountPath $ImagePath
+    
+    if ($desktopFolders.Count -eq 0) {
+        Write-Host "No desktop folders found in mounted image." -ForegroundColor Yellow
+    } else {
+        Copy-FilesToDesktopFolders -SourceFiles $sourceFiles -DesktopFolders $desktopFolders -IndexNumber "Current"
+        Write-Host "✓ Desktop files added successfully" -ForegroundColor Green
+    }
+}
+
 function Add-DriversToIndex {
     param(
         [string]$IndexNumber,
@@ -860,12 +1163,12 @@ function Add-DriversToIndex {
     )
     
     try {
-        Write-Host "`nMounting WIM/ESD index $IndexNumber..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${IndexNumber}..." -ForegroundColor Yellow
         $Global:CurrentOperation = "Mounting"
         dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$IndexNumber /MountDir:$Global:MountPath /CheckIntegrity
         
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to mount WIM/ESD index $IndexNumber"
+            throw "Failed to mount WIM/ESD index ${IndexNumber}"
         }
         
         Write-Host "Adding drivers from $DriverPath..." -ForegroundColor Yellow
@@ -882,13 +1185,13 @@ function Add-DriversToIndex {
         dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
         
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "SUCCESS: Drivers added to index $IndexNumber" -ForegroundColor Green
+            Write-Host "SUCCESS: Drivers added to index ${IndexNumber}" -ForegroundColor Green
         } else {
-            throw "Failed to commit changes for index $IndexNumber"
+            throw "Failed to commit changes for index ${IndexNumber}"
         }
         
     } catch {
-        Write-Host "ERROR processing index $IndexNumber : $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "ERROR processing index ${IndexNumber} : $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
         try {
             dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
@@ -914,8 +1217,9 @@ function Manage-PackagesAndFeatures {
     Write-Host "`nPackage and Feature Management Options:" -ForegroundColor Cyan
     Write-Host "1. Manage for specific index"
     Write-Host "2. Manage for all indexes"
-    Write-Host "3. Return to Main Menu" -ForegroundColor Red
-    $choice = Read-Host "Select option (1-3)"
+    Write-Host "3. Manage Current Live System" -ForegroundColor Green
+    Write-Host "4. Return to Main Menu" -ForegroundColor Red
+    $choice = Read-Host "Select option (1-4)"
     
     $Global:EnabledFeatures = @()
     $Global:DisabledFeatures = @()
@@ -923,6 +1227,8 @@ function Manage-PackagesAndFeatures {
     $Global:RemovedPackages = @()
     $Global:AddedAppxPackages = @()
     $Global:RemovedAppxPackages = @()
+    $Global:SelectedDesktopFiles = @()
+    $Global:ShouldAddDesktopFiles = $false
     
     switch ($choice) {
         "1" {
@@ -962,6 +1268,22 @@ function Manage-PackagesAndFeatures {
                             }
                         } while ($true)
                     }
+                }
+            }
+            
+            $addDesktopFiles = Read-Host "`nDo you want to add desktop files to the image(s)? (y/N)"
+            $shouldAddDesktopFiles = $addDesktopFiles.ToLower() -eq 'y'
+            
+            # Store globally for use across indexes
+            $Global:ShouldAddDesktopFiles = $shouldAddDesktopFiles
+            
+            if ($shouldAddDesktopFiles) {
+                # Get the files once and store them globally
+                Write-Host "`nPreparing desktop files for installation..." -ForegroundColor Yellow
+                $Global:SelectedDesktopFiles = Get-DesktopFilesToCopy
+                if (-not $Global:SelectedDesktopFiles -or $Global:SelectedDesktopFiles.Count -eq 0) {
+                    Write-Host "No desktop files selected. Skipping desktop file installation." -ForegroundColor Yellow
+                    $Global:ShouldAddDesktopFiles = $false
                 }
             }
             
@@ -1032,6 +1354,22 @@ function Manage-PackagesAndFeatures {
                 }
             }
             
+            $addDesktopFiles = Read-Host "`nDo you want to add desktop files to the image(s)? (y/N)"
+            $shouldAddDesktopFiles = $addDesktopFiles.ToLower() -eq 'y'
+            
+            # Store globally for use across indexes
+            $Global:ShouldAddDesktopFiles = $shouldAddDesktopFiles
+            
+            if ($shouldAddDesktopFiles) {
+                # Get the files once and store them globally
+                Write-Host "`nPreparing desktop files for installation..." -ForegroundColor Yellow
+                $Global:SelectedDesktopFiles = Get-DesktopFilesToCopy
+                if (-not $Global:SelectedDesktopFiles -or $Global:SelectedDesktopFiles.Count -eq 0) {
+                    Write-Host "No desktop files selected. Skipping desktop file installation." -ForegroundColor Yellow
+                    $Global:ShouldAddDesktopFiles = $false
+                }
+            }
+            
             $Global:CurrentOperation = "Managing Packages and Features"
             $Global:CleanupRequired = $true
             
@@ -1062,7 +1400,7 @@ function Manage-PackagesAndFeatures {
                 
                 foreach ($index in $indexes) {
                     if ($index -ne $baseIndex) {
-                        Write-Host "`n--- Processing Index $index ---" -ForegroundColor Magenta
+                        Write-Host "`n--- Processing Index ${index} ---" -ForegroundColor Magenta
                         Manage-PackagesAndFeaturesForIndex -IndexNumber $index -AddDrivers $shouldAddDrivers -DriverPath $driverPath -IsMultiIndex $true -IsFirstIndex $false
                     }
                 }
@@ -1073,7 +1411,21 @@ function Manage-PackagesAndFeatures {
                 $Global:CleanupRequired = $false
             }
         }
-        "3" { return }
+        "3" {
+            Write-Host "`nManaging Current Live System" -ForegroundColor Green
+            Write-Host "============================" -ForegroundColor Green
+            Write-Host "This will work directly on your currently running Windows installation." -ForegroundColor Yellow
+            Write-Host "Changes will take effect immediately and cannot be easily undone!" -ForegroundColor Red
+            Write-Host ""
+            
+            $confirm = Read-Host "Are you sure you want to proceed with live system management? (y/N)"
+            if ($confirm.ToLower() -eq 'y') {
+                Manage-LiveSystem
+            } else {
+                Write-Host "Live system management cancelled." -ForegroundColor Yellow
+            }
+        }
+        "4" { return }
         default {
             Write-Host "Invalid selection." -ForegroundColor Red
             Read-Host "Press Enter to continue"
@@ -1091,12 +1443,12 @@ function Manage-PackagesAndFeaturesForIndex {
     )
     
     try {
-        Write-Host "`nMounting WIM/ESD index $IndexNumber..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${IndexNumber}..." -ForegroundColor Yellow
         $Global:CurrentOperation = "Mounting"
         dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$IndexNumber /MountDir:$Global:MountPath /CheckIntegrity
         
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to mount WIM/ESD index $IndexNumber"
+            throw "Failed to mount WIM/ESD index ${IndexNumber}"
         }
         
         if ($AddDrivers -and $DriverPath) {
@@ -1110,9 +1462,23 @@ function Manage-PackagesAndFeaturesForIndex {
             }
             
             if ($LASTEXITCODE -ne 0) {
-                Write-Host "Warning: Driver installation may have had issues for index $IndexNumber" -ForegroundColor Yellow
+                Write-Host "Warning: Driver installation may have had issues for index ${IndexNumber}" -ForegroundColor Yellow
             } else {
                 Write-Host "✓ Drivers added successfully" -ForegroundColor Green
+            }
+        }
+        
+        if ($Global:ShouldAddDesktopFiles -and $Global:SelectedDesktopFiles.Count -gt 0) {
+            Write-Host "`nAdding desktop files..." -ForegroundColor Yellow
+            
+            # Find desktop folders and copy files
+            $desktopFolders = Find-DesktopFolders -MountPath $Global:MountPath
+            
+            if ($desktopFolders.Count -eq 0) {
+                Write-Host "No desktop folders found in mounted image." -ForegroundColor Yellow
+            } else {
+                Copy-FilesToDesktopFolders -SourceFiles $Global:SelectedDesktopFiles -DesktopFolders $desktopFolders -IndexNumber $IndexNumber
+                Write-Host "✓ Desktop files added successfully" -ForegroundColor Green
             }
         }
         
@@ -1259,7 +1625,7 @@ function Manage-PackagesAndFeaturesForIndex {
         } else {
             do {
                 Clear-Host
-                Write-Host "Package and Feature Management - Index: $IndexNumber" -ForegroundColor Cyan
+                Write-Host "Package and Feature Management - Index: ${IndexNumber}" -ForegroundColor Cyan
                 Write-Host "=================================================" -ForegroundColor Cyan
                 Write-Host ""
                 Write-Host "SYSTEM PACKAGE MANAGEMENT (.cab/.msu):" -ForegroundColor Magenta
@@ -1332,9 +1698,9 @@ function Manage-PackagesAndFeaturesForIndex {
                         dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
                         
                         if ($LASTEXITCODE -eq 0) {
-                            Write-Host "SUCCESS: Changes committed for index $IndexNumber" -ForegroundColor Green
+                            Write-Host "SUCCESS: Changes committed for index ${IndexNumber}" -ForegroundColor Green
                         } else {
-                            throw "Failed to commit changes for index $IndexNumber"
+                            throw "Failed to commit changes for index ${IndexNumber}"
                         }
                         return
                     }
@@ -1358,15 +1724,1191 @@ function Manage-PackagesAndFeaturesForIndex {
             dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "SUCCESS: Changes committed for index $IndexNumber" -ForegroundColor Green
+                Write-Host "SUCCESS: Changes committed for index ${IndexNumber}" -ForegroundColor Green
             } else {
-                throw "Failed to commit changes for index $IndexNumber"
+                throw "Failed to commit changes for index ${IndexNumber}"
             }
         }
         
     } catch {
-        Write-Host "ERROR processing index $IndexNumber : $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "ERROR processing index ${IndexNumber} : $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
+        try {
+            dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+        } catch {
+            Write-Host "Manual cleanup may be required." -ForegroundColor Red
+        }
+    }
+}
+
+function Get-KeyNameFromTargetEdition {
+    param([string]$TargetEdition)
+    
+    # Map DISM target editions to exact key names we actually have
+    switch ($TargetEdition) {
+        # Core/Home editions
+        "Core" { return "Windows 11 Home" }
+        "CoreN" { return "Windows 11 Home N" }
+        "CoreSingleLanguage" { return "Windows 11 Home Single Language" }
+        "CoreCountrySpecific" { return "Windows 11 Home Country Specific" }
+        
+        # Professional editions  
+        "Professional" { return "Windows 11 Pro" }
+        "ProfessionalN" { return "Windows 11 Pro N" }
+        "ProfessionalWorkstation" { return "Windows 11 Pro for Workstations" }
+        "ProfessionalWorkstationN" { return "Windows 11 Pro N for Workstations" }
+        "ProfessionalEducation" { return "Windows 11 Pro Education" }
+        "ProfessionalEducationN" { return "Windows 11 Pro Education N" }
+        
+        # Education editions
+        "Education" { return "Windows 11 Education" }
+        "EducationN" { return "Windows 11 Education N" }
+        
+        # Enterprise editions
+        "Enterprise" { return "Windows 11 Enterprise" }
+        "EnterpriseN" { return "Windows 11 Enterprise N" }
+        "EnterpriseG" { return "Windows 11 Enterprise G" }
+        "EnterpriseGN" { return "Windows 11 Enterprise G N" }
+        "EnterpriseS" { return "Windows 10 Enterprise S" }
+        
+        # IoT Enterprise
+        "IoTEnterprise" { return "Windows IoT Enterprise LTSC 2024" }
+        
+        default { return $null }
+    }
+}
+
+function Manage-LiveSystem {
+    Write-Host "`nLive System Package and Feature Management" -ForegroundColor Green
+    Write-Host "WARNING: Changes are applied immediately to your running system!" -ForegroundColor Red
+    Write-Host ""
+    
+    do {
+        Clear-Host
+        Write-Host "Live System Management" -ForegroundColor Green
+        Write-Host "======================" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "SYSTEM PACKAGE MANAGEMENT (.cab/.msu):" -ForegroundColor Magenta
+        Write-Host "1. View all installed system packages"
+        Write-Host "2. View specific system package info"
+        Write-Host "3. Add system package(s)"
+        Write-Host "4. Remove system package(s)"
+        Write-Host ""
+        Write-Host "APPLICATION PACKAGE MANAGEMENT (.appx/.appxbundle):" -ForegroundColor Magenta
+        Write-Host "5. View all provisioned application packages"
+        Write-Host "6. Add application package(s)"
+        Write-Host "7. Remove application package(s)"
+        Write-Host ""
+        Write-Host "FEATURE MANAGEMENT:" -ForegroundColor Magenta
+        Write-Host "8. View all available features"
+        Write-Host "9. View specific feature info"
+        Write-Host "10. Enable feature(s)"
+        Write-Host "11. Disable feature(s)"
+        Write-Host ""
+        Write-Host "ACTIONS:" -ForegroundColor Magenta
+        Write-Host "12. Return to Package Management Menu"
+        
+        $managementChoice = Read-Host "`nSelect option (1-12)"
+        
+        switch ($managementChoice) {
+            "1" { 
+                Show-LiveInstalledPackages
+                Read-Host "`nPress Enter to continue"
+            }
+            "2" {
+                $packageName = Read-Host "Enter system package name"
+                Show-LivePackageInfo -PackageName $packageName
+                Read-Host "`nPress Enter to continue"
+            }
+            "3" {
+                Add-LivePackages
+            }
+            "4" {
+                Remove-LivePackages
+            }
+            "5" { 
+                Show-LiveProvisionedAppxPackages
+                Read-Host "`nPress Enter to continue"
+            }
+            "6" {
+                Add-LiveAppxPackages
+            }
+            "7" {
+                Remove-LiveAppxPackages
+            }
+            "8" { 
+                Show-LiveAvailableFeatures
+                Read-Host "`nPress Enter to continue"
+            }
+            "9" {
+                $featureName = Read-Host "Enter feature name"
+                Show-LiveFeatureInfo -FeatureName $featureName
+                Read-Host "`nPress Enter to continue"
+            }
+            "10" {
+                Enable-LiveFeatures
+            }
+            "11" {
+                Disable-LiveFeatures
+            }
+            "12" {
+                return
+            }
+            default {
+                Write-Host "Invalid selection." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+    } while ($true)
+}
+
+function Show-LiveInstalledPackages {
+    Write-Host "Getting installed system packages from live system..." -ForegroundColor Yellow
+    try {
+        Write-Host "`nInstalled System Packages (.cab/.msu) - Live System:" -ForegroundColor Cyan
+        Write-Host "===================================================" -ForegroundColor Cyan
+        dism /Online /Get-Packages
+    } catch {
+        Write-Host "Error getting live system packages: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+function Show-LivePackageInfo {
+    param([string]$PackageName)
+    
+    try {
+        Write-Host "`nDetailed information for package: $PackageName (Live System)" -ForegroundColor Cyan
+        dism /Online /Get-PackageInfo /PackageName:$PackageName
+    } catch {
+        Write-Host "Error getting live package info: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+function Add-LivePackages {
+    Write-Host "`nAdding System Packages to Live System" -ForegroundColor Cyan
+    Write-Host "WARNING: Changes will be applied immediately!" -ForegroundColor Red
+    
+    $packagePath = $Global:PackagePath
+    if (-not $packagePath) {
+        do {
+            $path = Read-Host "Enter the path to your system packages folder"
+            $validatedPath = Test-DirectoryPath -Path $path -PathType "Package"
+            if ($validatedPath) {
+                $packagePath = $validatedPath
+                break
+            } else {
+                Write-Host "Please enter a valid existing directory path." -ForegroundColor Red
+            }
+        } while ($true)
+    } else {
+        Write-Host "Using saved package path: $packagePath" -ForegroundColor Green
+        $useExisting = Read-Host "Use this path? (Y/n)"
+        if ($useExisting.ToLower() -eq 'n') {
+            do {
+                $path = Read-Host "Enter the path to your system packages folder"
+                $validatedPath = Test-DirectoryPath -Path $path -PathType "Package"
+                if ($validatedPath) {
+                    $packagePath = $validatedPath
+                    break
+                } else {
+                    Write-Host "Please enter a valid existing directory path." -ForegroundColor Red
+                }
+            } while ($true)
+        }
+    }
+    
+    $cabFiles = Get-ChildItem -Path $packagePath -Filter "*.cab" -Recurse -ErrorAction SilentlyContinue
+    $msuFiles = Get-ChildItem -Path $packagePath -Filter "*.msu" -Recurse -ErrorAction SilentlyContinue
+    
+    $packages = @()
+    if ($cabFiles) { $packages += $cabFiles.FullName }
+    if ($msuFiles) { $packages += $msuFiles.FullName }
+    
+    if ($packages.Count -eq 0) {
+        Write-Host "No .cab or .msu files found in: $packagePath" -ForegroundColor Red
+        Read-Host "`nPress Enter to continue"
+        return
+    }
+    
+    Write-Host "Found $($packages.Count) system package file(s):" -ForegroundColor Green
+    foreach ($pkg in $packages) {
+        Write-Host "  - $(Split-Path $pkg -Leaf)" -ForegroundColor Gray
+    }
+    
+    $proceed = Read-Host "`nProceed with adding these packages to the live system? (y/N)"
+    if ($proceed.ToLower() -eq 'y') {
+        Write-Host "`nAdding packages to live system..." -ForegroundColor Yellow
+        foreach ($package in $packages) {
+            Write-Host "Adding: $(Split-Path $package -Leaf)" -ForegroundColor Gray
+            try {
+                dism /Online /Add-Package /PackagePath:$package
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✓ Successfully added: $(Split-Path $package -Leaf)" -ForegroundColor Green
+                } else {
+                    Write-Host "✗ Failed to add: $(Split-Path $package -Leaf)" -ForegroundColor Red
+                }
+            } catch {
+                Write-Host "✗ Error adding $(Split-Path $package -Leaf) : $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+    
+    Read-Host "`nPress Enter to continue"
+}
+
+function Remove-LivePackages {
+    Write-Host "`nRemoving System Packages from Live System" -ForegroundColor Cyan
+    Write-Host "WARNING: Changes will be applied immediately!" -ForegroundColor Red
+    
+    Write-Host "Getting installed packages for reference..." -ForegroundColor Yellow
+    try {
+        dism /Online /Get-Packages
+    } catch {
+        Write-Host "Error getting packages: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    
+    Write-Host "`nEnter package names separated by commas:"
+    $packageInput = Read-Host "Package names to remove"
+    if (-not $packageInput) {
+        return
+    }
+    
+    $packages = $packageInput -split ',' | ForEach-Object { $_.Trim() }
+    
+    $confirm = Read-Host "`nAre you sure you want to remove these packages from the live system? (y/N)"
+    if ($confirm.ToLower() -eq 'y') {
+        Write-Host "`nRemoving packages from live system..." -ForegroundColor Yellow
+        foreach ($package in $packages) {
+            Write-Host "Removing: $package" -ForegroundColor Gray
+            try {
+                dism /Online /Remove-Package /PackageName:$package
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✓ Successfully removed: $package" -ForegroundColor Green
+                } else {
+                    Write-Host "✗ Failed to remove: $package" -ForegroundColor Red
+                }
+            } catch {
+                Write-Host "✗ Error removing $package : $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+    
+    Read-Host "`nPress Enter to continue"
+}
+
+function Show-LiveProvisionedAppxPackages {
+    Write-Host "Getting provisioned application packages from live system..." -ForegroundColor Yellow
+    try {
+        Write-Host "`nProvisioned Application Packages - Live System:" -ForegroundColor Cyan
+        Write-Host "===============================================" -ForegroundColor Cyan
+        dism /Online /Get-ProvisionedAppxPackages
+    } catch {
+        Write-Host "Error getting live application packages: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+function Add-LiveAppxPackages {
+    Write-Host "`nAdding Application Packages to Live System" -ForegroundColor Cyan
+    Write-Host "WARNING: Changes will be applied immediately to your running system!" -ForegroundColor Red
+    
+    $appxPackagePath = $Global:AppxPackagePath
+    if (-not $appxPackagePath) {
+        do {
+            $path = Read-Host "Enter the path to your APPX/APPXBUNDLE packages folder"
+            $validatedPath = Test-DirectoryPath -Path $path -PathType "APPX Package"
+            if ($validatedPath) {
+                $appxPackagePath = $validatedPath
+                $save = Read-Host "Save this APPX package path for future use? (Y/n)"
+                if ($save.ToLower() -ne 'n') {
+                    $Global:AppxPackagePath = $appxPackagePath
+                }
+                break
+            } else {
+                Write-Host "Please enter a valid existing directory path." -ForegroundColor Red
+            }
+        } while ($true)
+    } else {
+        Write-Host "Using saved APPX package path: ${appxPackagePath}" -ForegroundColor Green
+        $useExisting = Read-Host "Use this path? (Y/n)"
+        if ($useExisting.ToLower() -eq 'n') {
+            do {
+                $path = Read-Host "Enter the path to your APPX/APPXBUNDLE packages folder"
+                $validatedPath = Test-DirectoryPath -Path $path -PathType "APPX Package"
+                if ($validatedPath) {
+                    $appxPackagePath = $validatedPath
+                    break
+                } else {
+                    Write-Host "Please enter a valid existing directory path." -ForegroundColor Red
+                }
+            } while ($true)
+        }
+    }
+    
+    Write-Host "`nScanning for APPX/APPXBUNDLE packages in: ${appxPackagePath}" -ForegroundColor Yellow
+    $appxFiles = Get-ChildItem -Path $appxPackagePath -Filter "*.appx" -Recurse -ErrorAction SilentlyContinue
+    $appxbundleFiles = Get-ChildItem -Path $appxPackagePath -Filter "*.appxbundle" -Recurse -ErrorAction SilentlyContinue
+    
+    $packages = @()
+    if ($appxFiles) {
+        $packages += $appxFiles.FullName
+    }
+    if ($appxbundleFiles) {
+        $packages += $appxbundleFiles.FullName
+    }
+    
+    $packages = $packages | Where-Object { $_ -and $_.Trim() }
+    
+    if ($packages.Count -eq 0) {
+        Write-Host "No .appx or .appxbundle files found in: ${appxPackagePath}" -ForegroundColor Red
+        Read-Host "`nPress Enter to continue"
+        return
+    }
+    
+    Write-Host "Found $($packages.Count) application package file(s):" -ForegroundColor Green
+    foreach ($pkg in $packages) {
+        $fileType = if ($pkg -like "*.appxbundle") { "APPXBUNDLE" } else { "APPX" }
+        Write-Host "  - $(Split-Path $pkg -Leaf) [$fileType]" -ForegroundColor Gray
+    }
+    
+    # Group packages by type for processing
+    $appxPackages = $packages | Where-Object { $_ -like "*.appx" }
+    $appxbundlePackages = $packages | Where-Object { $_ -like "*.appxbundle" }
+    
+    $proceed = Read-Host "`nProceed with adding these application packages to the live system? (y/N)"
+    if ($proceed.ToLower() -ne 'y') {
+        return
+    }
+    
+    Write-Host "`nAdding application packages to live system..." -ForegroundColor Yellow
+    
+    # Process APPX files (may need dependencies)
+    foreach ($package in $appxPackages) {
+        Write-Host "`nProcessing APPX: $(Split-Path $package -Leaf)" -ForegroundColor Cyan
+        
+        # Check for dependencies and license
+        $packageDir = Split-Path $package -Parent
+        $packageName = [System.IO.Path]::GetFileNameWithoutExtension($package)
+        
+        # Look for dependencies
+        $dependencies = Get-ChildItem -Path $packageDir -Filter "*dependency*.appx" -ErrorAction SilentlyContinue
+        $frameworkDeps = Get-ChildItem -Path $packageDir -Filter "*framework*.appx" -ErrorAction SilentlyContinue
+        $allDeps = @()
+        if ($dependencies) { $allDeps += $dependencies.FullName }
+        if ($frameworkDeps) { $allDeps += $frameworkDeps.FullName }
+        
+        # Look for license file
+        $licenseFile = Get-ChildItem -Path $packageDir -Filter "*license*.xml" -ErrorAction SilentlyContinue | Select-Object -First 1
+        
+        try {
+            if ($allDeps.Count -gt 0 -or $licenseFile) {
+                Write-Host "  Using folder-based installation..." -ForegroundColor Gray
+                
+                # Use folder path method for complex installations
+                $dismArgs = @("/Online", "/Add-ProvisionedAppxPackage", "/FolderPath:$packageDir")
+                
+                if ($allDeps.Count -gt 0) {
+                    Write-Host "  Found dependencies: $($allDeps.Count)" -ForegroundColor Yellow
+                    foreach ($dep in $allDeps) {
+                        $dismArgs += "/DependencyPackagePath:$dep"
+                        Write-Host "    - $(Split-Path $dep -Leaf)" -ForegroundColor Gray
+                    }
+                }
+                
+                if ($licenseFile) {
+                    Write-Host "  Found license: $(Split-Path $licenseFile.FullName -Leaf)" -ForegroundColor Yellow
+                    $dismArgs += "/LicensePath:$($licenseFile.FullName)"
+                }
+                
+                dism @dismArgs
+            } else {
+                Write-Host "  Using direct package installation..." -ForegroundColor Gray
+                dism /Online /Add-ProvisionedAppxPackage /PackagePath:$package /SkipLicense
+            }
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  ✓ Successfully added: $(Split-Path $package -Leaf)" -ForegroundColor Green
+            } else {
+                Write-Host "  ✗ Failed to add: $(Split-Path $package -Leaf)" -ForegroundColor Red
+            }
+        } catch {
+            Write-Host "  ✗ Error adding $(Split-Path $package -Leaf) : $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+    
+    # Process APPXBUNDLE files
+    foreach ($package in $appxbundlePackages) {
+        Write-Host "`nProcessing APPXBUNDLE: $(Split-Path $package -Leaf)" -ForegroundColor Cyan
+        try {
+            dism /Online /Add-ProvisionedAppxPackage /PackagePath:$package /SkipLicense
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "  ✓ Successfully added: $(Split-Path $package -Leaf)" -ForegroundColor Green
+            } else {
+                Write-Host "  ✗ Failed to add: $(Split-Path $package -Leaf)" -ForegroundColor Red
+            }
+        } catch {
+            Write-Host "  ✗ Error adding $(Split-Path $package -Leaf) : $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+    
+    Write-Host "`nLive system application package installation completed!" -ForegroundColor Green
+    Write-Host "Note: Some applications may require a restart to be fully available." -ForegroundColor Yellow
+    
+    Read-Host "`nPress Enter to continue"
+}
+
+function Remove-LiveAppxPackages {
+    Write-Host "`nRemoving Application Packages from Live System" -ForegroundColor Cyan
+    Write-Host "WARNING: Changes will be applied immediately!" -ForegroundColor Red
+    
+    try {
+        dism /Online /Get-ProvisionedAppxPackages
+    } catch {
+        Write-Host "Error getting packages: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    
+    Write-Host "`nEnter application package names separated by commas:"
+    $packageInput = Read-Host "Application package names to remove"
+    if (-not $packageInput) {
+        return
+    }
+    
+    $packages = $packageInput -split ',' | ForEach-Object { $_.Trim() }
+    
+    $confirm = Read-Host "`nAre you sure you want to remove these packages from the live system? (y/N)"
+    if ($confirm.ToLower() -eq 'y') {
+        Write-Host "`nRemoving application packages from live system..." -ForegroundColor Yellow
+        foreach ($package in $packages) {
+            Write-Host "Removing: $package" -ForegroundColor Gray
+            try {
+                dism /Online /Remove-ProvisionedAppxPackage /PackageName:$package
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✓ Successfully removed: $package" -ForegroundColor Green
+                } else {
+                    Write-Host "✗ Failed to remove: $package" -ForegroundColor Red
+                }
+            } catch {
+                Write-Host "✗ Error removing $package : $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+    
+    Read-Host "`nPress Enter to continue"
+}
+
+function Show-LiveAvailableFeatures {
+    Write-Host "Getting available features from live system..." -ForegroundColor Yellow
+    try {
+        Write-Host "`nAvailable Windows Features - Live System:" -ForegroundColor Cyan
+        Write-Host "=========================================" -ForegroundColor Cyan
+        dism /Online /Get-Features /Format:Table
+    } catch {
+        Write-Host "Error getting live features: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+function Show-LiveFeatureInfo {
+    param([string]$FeatureName)
+    
+    try {
+        Write-Host "`nDetailed information for feature: $FeatureName (Live System)" -ForegroundColor Cyan
+        dism /Online /Get-FeatureInfo /FeatureName:$FeatureName
+    } catch {
+        Write-Host "Error getting live feature info: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+function Enable-LiveFeatures {
+    Write-Host "`nEnabling Windows Features on Live System" -ForegroundColor Cyan
+    Write-Host "WARNING: Changes will be applied immediately!" -ForegroundColor Red
+    
+    try {
+        dism /Online /Get-Features /Format:Table
+    } catch {
+        Write-Host "Error getting features: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    
+    Write-Host "`nEnter feature names separated by commas:"
+    $featureInput = Read-Host "Features to enable"
+    if (-not $featureInput) {
+        return
+    }
+    
+    $features = $featureInput -split ',' | ForEach-Object { $_.Trim() }
+    
+    $confirm = Read-Host "`nAre you sure you want to enable these features on the live system? (y/N)"
+    if ($confirm.ToLower() -eq 'y') {
+        Write-Host "`nEnabling features on live system..." -ForegroundColor Yellow
+        foreach ($feature in $features) {
+            Write-Host "Enabling: $feature" -ForegroundColor Gray
+            try {
+                dism /Online /Enable-Feature /FeatureName:$feature /All
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✓ Successfully enabled: $feature" -ForegroundColor Green
+                } else {
+                    Write-Host "✗ Failed to enable: $feature" -ForegroundColor Red
+                }
+            } catch {
+                Write-Host "✗ Error enabling $feature : $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+    
+    Read-Host "`nPress Enter to continue"
+}
+
+function Disable-LiveFeatures {
+    Write-Host "`nDisabling Windows Features on Live System" -ForegroundColor Cyan
+    Write-Host "WARNING: Changes will be applied immediately!" -ForegroundColor Red
+    
+    try {
+        dism /Online /Get-Features /Format:Table
+    } catch {
+        Write-Host "Error getting features: $($_.Exception.Message)" -ForegroundColor Red
+    }
+    
+    Write-Host "`nEnter feature names separated by commas:"
+    $featureInput = Read-Host "Features to disable"
+    if (-not $featureInput) {
+        return
+    }
+    
+    $features = $featureInput -split ',' | ForEach-Object { $_.Trim() }
+    
+    $removePayload = Read-Host "Remove feature payload completely? (y/N)"
+    $removeCompletely = $removePayload.ToLower() -eq 'y'
+    
+    $confirm = Read-Host "`nAre you sure you want to disable these features on the live system? (y/N)"
+    if ($confirm.ToLower() -eq 'y') {
+        Write-Host "`nDisabling features on live system..." -ForegroundColor Yellow
+        foreach ($feature in $features) {
+            Write-Host "Disabling: $feature" -ForegroundColor Gray
+            try {
+                if ($removeCompletely) {
+                    dism /Online /Disable-Feature /FeatureName:$feature /Remove
+                } else {
+                    dism /Online /Disable-Feature /FeatureName:$feature
+                }
+                
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✓ Successfully disabled: $feature" -ForegroundColor Green
+                } else {
+                    Write-Host "✗ Failed to disable: $feature" -ForegroundColor Red
+                }
+            } catch {
+                Write-Host "✗ Error disabling $feature : $($_.Exception.Message)" -ForegroundColor Red
+            }
+        }
+    }
+    
+    Read-Host "`nPress Enter to continue"
+}
+
+function Manage-DesktopFiles {
+    if (-not (Test-RequiredPaths)) {
+        Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    if (-not (Test-MountPathEmpty)) {
+        Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    do {
+        Clear-Host
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "       Desktop Files Management" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host ""
+        
+        Write-Host "CURRENT CONFIGURATION:" -ForegroundColor Magenta
+        Write-Host "Install Image Path: " -NoNewline
+        Write-Host $Global:InstallWimPath -ForegroundColor Green
+        
+        $fileType = if ($Global:InstallWimPath -like "*.esd") { "ESD" } else { "WIM" }
+        Write-Host "File Type: " -NoNewline
+        Write-Host $fileType -ForegroundColor Green
+        
+        Write-Host "Mount Path: " -NoNewline
+        Write-Host "$Global:MountPath (Ready)" -ForegroundColor Green
+        
+        Write-Host "Desktop Files Path: " -NoNewline
+        if ($Global:DesktopFilesPath) {
+            Write-Host $Global:DesktopFilesPath -ForegroundColor Green
+        } else {
+            Write-Host "Not Set (Will prompt when needed)" -ForegroundColor Yellow
+        }
+        
+        try {
+            $indexes = Get-WimIndexes
+            Write-Host "Available Indexes: " -NoNewline
+            if ($indexes.Count -gt 0) {
+                Write-Host "$($indexes.Count) found" -ForegroundColor Green
+            } else {
+                Write-Host "None found" -ForegroundColor Red
+            }
+        } catch {
+            Write-Host "Available Indexes: " -NoNewline
+            Write-Host "Unable to read" -ForegroundColor Red
+        }
+        Write-Host ""
+        
+        Write-Host "DESKTOP FILES OPERATIONS:" -ForegroundColor Cyan
+        Write-Host "1. Add Files to Desktop (Specific Index)" -ForegroundColor Yellow
+        Write-Host "2. Add Files to Desktop (All Indexes)" -ForegroundColor Yellow
+        Write-Host "3. View Desktop Files (Specific Index)" -ForegroundColor Green
+        Write-Host "4. Remove Files from Specific Index" -ForegroundColor Red
+        Write-Host "5. Remove Files from All Indexes" -ForegroundColor Red
+        Write-Host "6. Return to Main Menu" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "Select an option (1-6): " -NoNewline -ForegroundColor White
+        
+        $choice = Read-Host
+        
+        switch ($choice) {
+            "1" { Add-FilesToDesktopSpecificIndex }
+            "2" { Add-FilesToDesktopAllIndexes }
+            "3" { View-DesktopFiles }
+            "4" { Remove-FilesFromSpecificIndex }
+            "5" { Remove-FilesFromAllIndexes }
+            "6" { return }
+            default {
+                Write-Host "Invalid selection." -ForegroundColor Red
+                Start-Sleep -Seconds 2
+            }
+        }
+    } while ($true)
+}
+
+function Add-FilesToDesktopSpecificIndex {
+    # Check and set desktop files path BEFORE mounting
+    if (-not $Global:DesktopFilesPath) {
+        Write-Host "`nDesktop files path is not set. Please configure it first." -ForegroundColor Yellow
+        $validPath = Get-DesktopFilesPathInteractive
+        if (-not $validPath) {
+            Write-Host "Cannot proceed without desktop files path." -ForegroundColor Red
+            Read-Host "Press Enter to continue"
+            return
+        }
+    }
+    
+    Write-Host "`nAvailable indexes in WIM/ESD:" -ForegroundColor Cyan
+    dism /Get-WimInfo /WimFile:$Global:InstallWimPath
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error getting WIM/ESD information." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    $indexNumber = Read-Host "`nEnter the index number"
+    Add-FilesToDesktopForIndex -IndexNumber $indexNumber
+    Read-Host "Press Enter to continue"
+}
+
+function Add-FilesToDesktopAllIndexes {
+    # Check and set desktop files path BEFORE mounting
+    if (-not $Global:DesktopFilesPath) {
+        Write-Host "`nDesktop files path is not set. Please configure it first." -ForegroundColor Yellow
+        $validPath = Get-DesktopFilesPathInteractive
+        if (-not $validPath) {
+            Write-Host "Cannot proceed without desktop files path." -ForegroundColor Red
+            Read-Host "Press Enter to continue"
+            return
+        }
+    }
+    
+    $indexes = Get-WimIndexes
+    if ($indexes.Count -eq 0) {
+        Write-Host "No indexes found in the image." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    Write-Host "`nThis will add files to desktop folders in ALL indexes." -ForegroundColor Yellow
+    Write-Host "Found $($indexes.Count) indexes to process." -ForegroundColor Cyan
+    
+    $proceed = Read-Host "Proceed with adding files to all indexes? (Y/n)"
+    if ($proceed.ToLower() -eq 'n') {
+        return
+    }
+    
+    # Get the files to copy ONCE before processing any indexes
+    $sourceFiles = Get-DesktopFilesToCopy
+    if (-not $sourceFiles -or $sourceFiles.Count -eq 0) {
+        Write-Host "No files selected for copying." -ForegroundColor Yellow
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    # Now process each index with the already-selected files
+    foreach ($index in $indexes) {
+        Write-Host "`n--- Processing Index ${index} ---" -ForegroundColor Magenta
+        Add-FilesToDesktopForIndexWithFiles -IndexNumber $index -SourceFiles $sourceFiles
+    }
+    
+    Write-Host "`nCompleted adding files to all indexes!" -ForegroundColor Green
+    Read-Host "Press Enter to continue"
+}
+
+function Add-FilesToDesktopForIndexWithFiles {
+    param(
+        [string]$IndexNumber,
+        [array]$SourceFiles
+    )
+    
+    try {
+        Write-Host "`nMounting WIM/ESD index ${IndexNumber}..." -ForegroundColor Yellow
+        $Global:CurrentOperation = "Mounting"
+        dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$IndexNumber /MountDir:$Global:MountPath /CheckIntegrity
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to mount WIM/ESD index ${IndexNumber}"
+        }
+        
+        # Find desktop folders and copy files
+        $desktopFolders = Find-DesktopFolders -MountPath $Global:MountPath
+        
+        if ($desktopFolders.Count -eq 0) {
+            Write-Host "No desktop folders found in mounted image." -ForegroundColor Yellow
+        } else {
+            Copy-FilesToDesktopFolders -SourceFiles $SourceFiles -DesktopFolders $desktopFolders -IndexNumber $IndexNumber
+        }
+        
+        Write-Host "Committing changes and unmounting..." -ForegroundColor Yellow
+        $Global:CurrentOperation = "Unmounting"
+        dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "SUCCESS: Desktop files added to index ${IndexNumber}" -ForegroundColor Green
+        } else {
+            throw "Failed to commit changes for index ${IndexNumber}"
+        }
+        
+    } catch {
+        Write-Host "ERROR processing index ${IndexNumber} : $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
+        try {
+            dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+        } catch {
+            Write-Host "Manual cleanup may be required." -ForegroundColor Red
+        }
+    }
+}
+
+function Get-DesktopFilesPathInteractive {
+    do {
+        $path = Read-Host "Enter the path to your desktop files folder"
+        $validatedPath = Test-DirectoryPath -Path $path -PathType "Desktop Files"
+        if ($validatedPath) {
+            $Global:DesktopFilesPath = $validatedPath
+            $save = Read-Host "Save this desktop files path for future use? (Y/n)"
+            if ($save.ToLower() -ne 'n') {
+                Write-Host "Desktop files path saved for future use." -ForegroundColor Green
+            }
+            return $validatedPath
+        } else {
+            Write-Host "Please enter a valid existing directory path." -ForegroundColor Red
+            $retry = Read-Host "Try again? (Y/n)"
+            if ($retry.ToLower() -eq 'n') {
+                return $null
+            }
+        }
+    } while ($true)
+}
+
+function View-DesktopFiles {
+    Write-Host "`nAvailable indexes in WIM/ESD:" -ForegroundColor Cyan
+    dism /Get-WimInfo /WimFile:$Global:InstallWimPath
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error getting WIM/ESD information." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    $indexNumber = Read-Host "`nEnter the index number to view desktop files"
+    
+    $Global:CurrentOperation = "Viewing Desktop Files"
+    $Global:CleanupRequired = $true
+    
+    try {
+        Write-Host "`nMounting WIM/ESD index ${indexNumber} (Read-Only)..." -ForegroundColor Yellow
+        
+        # Direct DISM call to show output properly
+        dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$indexNumber /MountDir:$Global:MountPath /CheckIntegrity /ReadOnly
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to mount WIM/ESD index ${indexNumber}"
+        }
+        
+        $desktopFolders = Find-DesktopFolders -MountPath $Global:MountPath
+        
+        if ($desktopFolders.Count -eq 0) {
+            Write-Host "`nNo desktop folders found in this index." -ForegroundColor Yellow
+        } else {
+            Write-Host "`nDesktop Files in Index ${indexNumber}:" -ForegroundColor Cyan
+            Write-Host "===================================" -ForegroundColor Cyan
+            
+            foreach ($desktopFolder in $desktopFolders) {
+                $folderName = ($desktopFolder -split '\\')[-2..-1] -join '\'
+                Write-Host "`nFolder: ${folderName}" -ForegroundColor Green
+                
+                $files = Get-ChildItem -Path $desktopFolder -Recurse -File -ErrorAction SilentlyContinue
+                if ($files.Count -eq 0) {
+                    Write-Host "  (No files)" -ForegroundColor Gray
+                } else {
+                    foreach ($file in $files) {
+                        $relativePath = $file.FullName.Substring($desktopFolder.Length + 1)
+                        $sizeKB = [math]::Round($file.Length / 1KB, 2)
+                        Write-Host "  ${relativePath} ($sizeKB KB)" -ForegroundColor White
+                    }
+                }
+            }
+        }
+        
+        Read-Host "Press Enter to continue"
+        
+        Write-Host "`nUnmounting image..." -ForegroundColor Yellow
+        dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+        
+    } catch {
+        Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+        try {
+            dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+        } catch {
+            Write-Host "Manual cleanup may be required." -ForegroundColor Red
+        }
+    } finally {
+        $Global:CurrentOperation = "None"
+        $Global:CleanupRequired = $false
+    }
+    
+    Read-Host "Press Enter to continue"
+}
+
+function Remove-FilesFromSpecificIndex {
+    Write-Host "`nAvailable indexes in WIM/ESD:" -ForegroundColor Cyan
+    dism /Get-WimInfo /WimFile:$Global:InstallWimPath
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Error getting WIM/ESD information." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    $indexNumber = Read-Host "`nEnter the index number"
+    
+    $Global:CurrentOperation = "Removing Desktop Files"
+    $Global:CleanupRequired = $true
+    
+    try {
+        Remove-DesktopFilesFromIndex -IndexNumber $indexNumber -IsMultiIndex $false
+    } catch {
+        Write-Host "Error during desktop file removal: $($_.Exception.Message)" -ForegroundColor Red
+    } finally {
+        $Global:CurrentOperation = "None"
+        $Global:CleanupRequired = $false
+    }
+    
+    Read-Host "Press Enter to continue"
+}
+
+function Remove-FilesFromAllIndexes {
+    $indexes = Get-WimIndexes
+    if ($indexes.Count -eq 0) {
+        Write-Host "No indexes found in the image." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    Write-Host "`nThis will remove files from desktop folders in ALL indexes." -ForegroundColor Yellow
+    Write-Host "Found $($indexes.Count) indexes to process." -ForegroundColor Cyan
+    
+    $proceed = Read-Host "Proceed with removing files from all indexes? (Y/n)"
+    if ($proceed.ToLower() -eq 'n') {
+        return
+    }
+    
+    # Show available indexes and let user choose the base index
+    Write-Host "`nSelect which Windows edition to use as base for file selection:" -ForegroundColor Yellow
+    Write-Host "(Different editions may have different files in desktop folders)" -ForegroundColor Gray
+    try {
+        dism /Get-WimInfo /WimFile:$Global:InstallWimPath
+    } catch {
+        Write-Host "Error getting WIM/ESD information." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    do {
+        $baseIndex = Read-Host "`nEnter the index number of the edition to use as base"
+        if ($indexes -contains $baseIndex) {
+            break
+        } else {
+            Write-Host "Invalid index. Please select from the available indexes above." -ForegroundColor Red
+        }
+    } while ($true)
+    
+    $Global:CurrentOperation = "Removing Desktop Files"
+    $Global:CleanupRequired = $true
+    
+    # Clear the global array
+    $Global:RemovedDesktopFiles = @()
+    
+    try {
+        Write-Host "`n--- Processing Base Index $baseIndex (File Selection) ---" -ForegroundColor Magenta
+        Remove-DesktopFilesFromIndex -IndexNumber $baseIndex -IsMultiIndex $true -IsFirstIndex $true
+        
+        foreach ($index in $indexes) {
+            if ($index -ne $baseIndex) {
+                Write-Host "`n--- Processing Index ${index} ---" -ForegroundColor Magenta
+                Remove-DesktopFilesFromIndex -IndexNumber $index -IsMultiIndex $true -IsFirstIndex $false
+            }
+        }
+    } catch {
+        Write-Host "Error during desktop file removal: $($_.Exception.Message)" -ForegroundColor Red
+    } finally {
+        $Global:CurrentOperation = "None"
+        $Global:CleanupRequired = $false
+    }
+    
+    Read-Host "Press Enter to continue"
+}
+
+function Remove-DesktopFilesFromIndex {
+    param(
+        [string]$IndexNumber,
+        [bool]$IsMultiIndex,
+        [bool]$IsFirstIndex = $true
+    )
+    
+    try {
+        Write-Host "`nMounting WIM/ESD index ${IndexNumber}..." -ForegroundColor Yellow
+        $Global:CurrentOperation = "Mounting"
+        dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$IndexNumber /MountDir:$Global:MountPath /CheckIntegrity
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to mount WIM/ESD index ${IndexNumber}"
+        }
+        
+        if ($IsMultiIndex -and -not $IsFirstIndex) {
+            # Apply previously selected files to remove
+            if ($Global:RemovedDesktopFiles.Count -gt 0) {
+                Write-Host "`nApplying previously selected desktop files to remove..." -ForegroundColor Yellow
+                
+                $successCount = 0
+                $failCount = 0
+                
+                foreach ($fileInfo in $Global:RemovedDesktopFiles) {
+                    # Reconstruct the path in the mounted image
+                    $desktopFolder = $Global:MountPath + "\Users\Default\Desktop"
+                    $targetFile = Join-Path $desktopFolder $fileInfo.RelativePath
+                    
+                    try {
+                        if (Test-Path $targetFile) {
+                            Remove-Item $targetFile -Force
+                            Write-Host "  ✓ Removed: $($fileInfo.RelativePath)" -ForegroundColor Green
+                            $successCount++
+                        } else {
+                            Write-Host "  ⚠ Not found: $($fileInfo.RelativePath)" -ForegroundColor Yellow
+                        }
+                    } catch {
+                        Write-Host "  ✗ Error removing $($fileInfo.RelativePath): $($_.Exception.Message)" -ForegroundColor Red
+                        $failCount++
+                    }
+                }
+                
+                Write-Host "`nSummary for index ${IndexNumber}: ${successCount} removed, ${failCount} failed" -ForegroundColor Cyan
+            }
+        } else {
+            # First index - get user selection
+            $desktopFolders = Find-DesktopFolders -MountPath $Global:MountPath
+            
+            if ($desktopFolders.Count -eq 0) {
+                Write-Host "`nNo desktop folders found in this index." -ForegroundColor Yellow
+                dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                return
+            }
+            
+            # Collect all files and show them
+            $allFiles = @()
+            $fileIndex = 1
+            
+            Write-Host "`nDesktop Files in Index ${IndexNumber}:" -ForegroundColor Cyan
+            Write-Host "===================================" -ForegroundColor Cyan
+            
+            foreach ($desktopFolder in $desktopFolders) {
+                $folderName = ($desktopFolder -split '\\')[-2..-1] -join '\'
+                $files = Get-ChildItem -Path $desktopFolder -Recurse -File -ErrorAction SilentlyContinue
+                
+                foreach ($file in $files) {
+                    $relativePath = $file.FullName.Substring($desktopFolder.Length + 1)
+                    $sizeKB = [math]::Round($file.Length / 1KB, 2)
+                    Write-Host "${fileIndex}. [$folderName] ${relativePath} ($sizeKB KB)" -ForegroundColor White
+                    
+                    $allFiles += @{
+                        Index = $fileIndex
+                        FullPath = $file.FullName
+                        RelativePath = $relativePath
+                        DesktopFolder = $desktopFolder
+                        FolderName = $folderName
+                    }
+                    $fileIndex++
+                }
+            }
+            
+            if ($allFiles.Count -eq 0) {
+                Write-Host "No files found in desktop folders." -ForegroundColor Yellow
+                dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                return
+            }
+            
+            Write-Host "`nEnter file numbers to remove (comma-separated, e.g., 1,3,5-7):" -ForegroundColor Yellow
+            Write-Host "Or enter 'ALL' to remove all files:" -ForegroundColor Yellow
+            $selection = Read-Host "Files to remove"
+            
+            if (-not $selection.Trim()) {
+                Write-Host "No selection made. Cancelling operation." -ForegroundColor Yellow
+                dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                return
+            }
+            
+            $filesToRemove = @()
+            
+            if ($selection.ToUpper() -eq 'ALL') {
+                $filesToRemove = $allFiles
+            } else {
+                # Parse selection
+                $parts = $selection -split ','
+                
+                foreach ($part in $parts) {
+                    $part = $part.Trim()
+                    if ($part -match '^(\d+)-(\d+)$') {
+                        # Range like 5-7
+                        $start = [int]$matches[1]
+                        $end = [int]$matches[2]
+                        for ($i = $start; $i -le $end; $i++) {
+                            $file = $allFiles | Where-Object { $_.Index -eq $i }
+                            if ($file) { $filesToRemove += $file }
+                        }
+                    } elseif ($part -match '^\d+$') {
+                        # Single number
+                        $num = [int]$part
+                        $file = $allFiles | Where-Object { $_.Index -eq $num }
+                        if ($file) { $filesToRemove += $file }
+                    }
+                }
+            }
+            
+            if ($filesToRemove.Count -eq 0) {
+                Write-Host "No valid files selected for removal." -ForegroundColor Yellow
+                dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                return
+            }
+            
+            if ($IsMultiIndex) {
+                # Store for use with other indexes
+                $Global:RemovedDesktopFiles = $filesToRemove
+                $applyToAll = Read-Host "`nApply these desktop file removals to all indexes? (Y/n)"
+                if ($applyToAll.ToLower() -eq 'n') {
+                    $Global:RemovedDesktopFiles = @()
+                }
+            }
+            
+            # Remove files from this index
+            $successCount = 0
+            $failCount = 0
+            
+            Write-Host "Removing $($filesToRemove.Count) file(s) from index ${IndexNumber}..." -ForegroundColor Yellow
+            
+            foreach ($fileInfo in $filesToRemove) {
+                try {
+                    if (Test-Path $fileInfo.FullPath) {
+                        Remove-Item $fileInfo.FullPath -Force
+                        Write-Host "  ✓ Removed: $($fileInfo.RelativePath)" -ForegroundColor Green
+                        $successCount++
+                    } else {
+                        Write-Host "  ⚠ Not found: $($fileInfo.RelativePath)" -ForegroundColor Yellow
+                    }
+                } catch {
+                    Write-Host "  ✗ Error removing $($fileInfo.RelativePath): $($_.Exception.Message)" -ForegroundColor Red
+                    $failCount++
+                }
+            }
+            
+            Write-Host "`nSummary for index ${IndexNumber}: ${successCount} removed, ${failCount} failed" -ForegroundColor Cyan
+        }
+        
+        Write-Host "Committing changes and unmounting..." -ForegroundColor Yellow
+        $Global:CurrentOperation = "Unmounting"
+        dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "SUCCESS: Changes committed for index ${IndexNumber}" -ForegroundColor Green
+        } else {
+            throw "Failed to commit changes for index ${IndexNumber}"
+        }
+        
+    } catch {
+        Write-Host "ERROR processing index ${IndexNumber} : $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
+        try {
+            dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+        } catch {
+            Write-Host "Manual cleanup may be required." -ForegroundColor Red
+        }
+    }
+}
+
+function Remove-SelectedFilesFromIndex {
+    param([string]$IndexNumber, [array]$FilesToRemove)
+    
+    try {
+        Write-Host "`nMounting WIM/ESD index ${IndexNumber}..." -ForegroundColor Yellow
+        dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$IndexNumber /MountDir:$Global:MountPath /CheckIntegrity
+        
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to mount WIM/ESD index ${IndexNumber}"
+        }
+        
+        $successCount = 0
+        $failCount = 0
+        
+        Write-Host "Removing $($FilesToRemove.Count) file(s) from index ${IndexNumber}..." -ForegroundColor Yellow
+        
+        foreach ($fileInfo in $FilesToRemove) {
+            # Reconstruct the path in the mounted image
+            $desktopFolder = $Global:MountPath + "\Users\Default\Desktop"
+            $targetFile = Join-Path $desktopFolder $fileInfo.RelativePath
+            
+            try {
+                if (Test-Path $targetFile) {
+                    Remove-Item $targetFile -Force
+                    Write-Host "  ✓ Removed: $($fileInfo.RelativePath)" -ForegroundColor Green
+                    $successCount++
+                } else {
+                    Write-Host "  ⚠ Not found: $($fileInfo.RelativePath)" -ForegroundColor Yellow
+                }
+            } catch {
+                Write-Host "  ✗ Error removing $($fileInfo.RelativePath): $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        Write-Host "`nSummary for index ${IndexNumber}: ${successCount} removed, ${failCount} failed" -ForegroundColor Cyan
+        
+        Write-Host "Committing changes and unmounting..." -ForegroundColor Yellow
+        dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✓ Changes committed successfully for index ${IndexNumber}" -ForegroundColor Green
+        } else {
+            throw "Failed to commit changes for index ${IndexNumber}"
+        }
+        
+    } catch {
+        Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
         try {
             dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
         } catch {
@@ -1751,26 +3293,26 @@ function Remove-WimIndex {
        
        foreach ($index in $indexesToRemove) {
            try {
-               Write-Host "`nRemoving index $index..." -ForegroundColor Yellow
+               Write-Host "`nRemoving index ${index}..." -ForegroundColor Yellow
                dism /Delete-Image /ImageFile:$Global:InstallWimPath /Index:$index
                
                if ($LASTEXITCODE -eq 0) {
-                   Write-Host "✓ Successfully removed index $index" -ForegroundColor Green
+                   Write-Host "✓ Successfully removed index ${index}" -ForegroundColor Green
                    $successCount++
                } else {
-                   Write-Host "✗ Failed to remove index $index" -ForegroundColor Red
+                   Write-Host "✗ Failed to remove index ${index}" -ForegroundColor Red
                    $failCount++
                }
            } catch {
-               Write-Host "✗ Error removing index $index : $($_.Exception.Message)" -ForegroundColor Red
+               Write-Host "✗ Error removing index ${index} : $($_.Exception.Message)" -ForegroundColor Red
                $failCount++
            }
        }
        
        Write-Host "`nSummary:" -ForegroundColor Cyan
-       Write-Host "Successfully removed: $successCount indexes" -ForegroundColor Green
+       Write-Host "Successfully removed: ${successCount} indexes" -ForegroundColor Green
        if ($failCount -gt 0) {
-           Write-Host "Failed to remove: $failCount indexes" -ForegroundColor Red
+           Write-Host "Failed to remove: ${failCount} indexes" -ForegroundColor Red
        }
    } else {
        Write-Host "Operation cancelled." -ForegroundColor Yellow
@@ -1948,9 +3490,9 @@ function Manage-Conversions {
         Write-Host "Mount Path: " -NoNewline
         Write-Host "$Global:MountPath (Ready)" -ForegroundColor Green
         
-        Write-Host "Conversion Backup Path: " -NoNewline
-        if ($Global:ConversionBackupPath) {
-            Write-Host $Global:ConversionBackupPath -ForegroundColor Green
+        Write-Host "Backup Path: " -NoNewline
+        if ($Global:BackupPath) {
+            Write-Host $Global:BackupPath -ForegroundColor Green
         } else {
             Write-Host "Not Set (Will use default)" -ForegroundColor Yellow
         }
@@ -2182,7 +3724,7 @@ function Get-ISOOutputPath {
             if (Test-Path $directory) {
                 break
             } else {
-                Write-Host "Output directory does not exist: $directory" -ForegroundColor Red
+                Write-Host "Output directory does not exist: ${directory}" -ForegroundColor Red
                 Write-Host "Please enter a path with an existing directory." -ForegroundColor Red
             }
         } while ($true)
@@ -2199,7 +3741,7 @@ function Get-ISOOutputPath {
                 if (Test-Path $directory) {
                     break
                 } else {
-                    Write-Host "Output directory does not exist: $directory" -ForegroundColor Red
+                    Write-Host "Output directory does not exist: ${directory}" -ForegroundColor Red
                     Write-Host "Please enter a path with an existing directory." -ForegroundColor Red
                 }
             } while ($true)
@@ -2417,7 +3959,7 @@ function Export-FromWim {
     if ($customizeNames) {
         foreach ($sourceIndex in $indexesToExport) {
             $indexInfo = dism /Get-WimInfo /WimFile:$sourceWim /Index:$sourceIndex 2>$null
-            $defaultName = "Exported Index $sourceIndex"
+            $defaultName = "Exported Index ${sourceIndex}"
             $defaultFlags = "Unknown"
             if ($indexInfo) {
                 $nameMatch = $indexInfo | Select-String "Name\s*:\s*(.+)"
@@ -2441,7 +3983,7 @@ function Export-FromWim {
                 }
             }
             
-            Write-Host "`nCustomizing index $sourceIndex (Default: '$defaultName'):" -ForegroundColor Cyan
+            Write-Host "`nCustomizing index ${sourceIndex} (Default: '$defaultName'):" -ForegroundColor Cyan
             $userName = Read-Host "Enter new name (Press Enter for default)"
             if (-not $userName.Trim()) { $userName = $defaultName }
             
@@ -2479,7 +4021,7 @@ function Export-FromWim {
         
         foreach ($sourceIndex in $indexesToExport) {
             $indexInfo = dism /Get-WimInfo /WimFile:$sourceWim /Index:$sourceIndex 2>$null
-            $defaultName = "Exported Index $sourceIndex"
+            $defaultName = "Exported Index ${sourceIndex}"
             if ($indexInfo) {
                 $nameMatch = $indexInfo | Select-String "Name\s*:\s*(.+)"
                 if ($nameMatch) {
@@ -2493,8 +4035,8 @@ function Export-FromWim {
                 $exportName = $customMetadata[$sourceIndex].ExportName
             }
             
-            Write-Host "`nExporting index $sourceIndex..." -ForegroundColor Yellow
-            Write-Host "Export name: '$exportName'" -ForegroundColor Cyan
+            Write-Host "`nExporting index ${sourceIndex}..." -ForegroundColor Yellow
+            Write-Host "Export name: ${exportName}" -ForegroundColor Cyan
             Write-Host "From: $sourceWim (Index: $sourceIndex)" -ForegroundColor Gray
             Write-Host "To: $Global:InstallWimPath" -ForegroundColor Gray
             
@@ -2502,7 +4044,7 @@ function Export-FromWim {
             dism /Export-Image /SourceImageFile:$sourceWim /SourceIndex:$sourceIndex /DestinationImageFile:$Global:InstallWimPath /DestinationName:$exportName /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ Successfully exported: '$exportName'" -ForegroundColor Green
+                Write-Host "✓ Successfully exported: ${exportName}" -ForegroundColor Green
                 $successCount++
                 
                 # Update additional metadata with wimlib if available and user customized
@@ -2517,15 +4059,15 @@ function Export-FromWim {
                     }
                 }
             } else {
-                Write-Host "✗ Failed to export index $sourceIndex" -ForegroundColor Red
+                Write-Host "✗ Failed to export index ${sourceIndex}" -ForegroundColor Red
                 $failCount++
             }
         }
         
         Write-Host "`nSummary:" -ForegroundColor Cyan
-        Write-Host "Successfully exported: $successCount indexes" -ForegroundColor Green
+        Write-Host "Successfully exported: ${successCount} indexes" -ForegroundColor Green
         if ($failCount -gt 0) {
-            Write-Host "Failed to export: $failCount indexes" -ForegroundColor Red
+            Write-Host "Failed to export: ${failCount} indexes" -ForegroundColor Red
         }
         
         if ($customizeNames) {
@@ -2693,7 +4235,7 @@ function Export-FromEsd {
     if ($customizeNames) {
         foreach ($sourceIndex in $indexesToExport) {
             $indexInfo = dism /Get-WimInfo /WimFile:$sourceEsd /Index:$sourceIndex 2>$null
-            $defaultName = "Exported Index $sourceIndex"
+            $defaultName = "Exported Index ${sourceIndex}"
             $defaultFlags = "Unknown"
             if ($indexInfo) {
                 $nameMatch = $indexInfo | Select-String "Name\s*:\s*(.+)"
@@ -2717,7 +4259,7 @@ function Export-FromEsd {
                 }
             }
             
-            Write-Host "`nCustomizing index $sourceIndex (Default: '$defaultName'):" -ForegroundColor Cyan
+            Write-Host "`nCustomizing index ${sourceIndex} (Default: '$defaultName'):" -ForegroundColor Cyan
             $userName = Read-Host "Enter new name (Press Enter for default)"
             if (-not $userName.Trim()) { $userName = $defaultName }
             
@@ -2755,7 +4297,7 @@ function Export-FromEsd {
         
         foreach ($sourceIndex in $indexesToExport) {
             $indexInfo = dism /Get-WimInfo /WimFile:$sourceEsd /Index:$sourceIndex 2>$null
-            $defaultName = "Exported Index $sourceIndex"
+            $defaultName = "Exported Index ${sourceIndex}"
             if ($indexInfo) {
                 $nameMatch = $indexInfo | Select-String "Name\s*:\s*(.+)"
                 if ($nameMatch) {
@@ -2769,8 +4311,8 @@ function Export-FromEsd {
                 $exportName = $customMetadata[$sourceIndex].ExportName
             }
             
-            Write-Host "`nExporting index $sourceIndex from ESD..." -ForegroundColor Yellow
-            Write-Host "Export name: '$exportName'" -ForegroundColor Cyan
+            Write-Host "`nExporting index ${sourceIndex} from ESD..." -ForegroundColor Yellow
+            Write-Host "Export name: ${exportName}" -ForegroundColor Cyan
             Write-Host "From: $sourceEsd (Index: $sourceIndex)" -ForegroundColor Gray
             Write-Host "To: $Global:InstallWimPath" -ForegroundColor Gray
             Write-Host "Note: This process may take several minutes." -ForegroundColor Cyan
@@ -2779,7 +4321,7 @@ function Export-FromEsd {
             dism /Export-Image /SourceImageFile:$sourceEsd /SourceIndex:$sourceIndex /DestinationImageFile:$Global:InstallWimPath /DestinationName:$exportName /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ Successfully exported '$exportName' from ESD" -ForegroundColor Green
+                Write-Host "✓ Successfully exported ${exportName} from ESD" -ForegroundColor Green
                 $successCount++
                 
                 # Update additional metadata with wimlib if available and user customized
@@ -2794,15 +4336,15 @@ function Export-FromEsd {
                     }
                 }
             } else {
-                Write-Host "✗ Failed to export index $sourceIndex" -ForegroundColor Red
+                Write-Host "✗ Failed to export index ${sourceIndex}" -ForegroundColor Red
                 $failCount++
             }
         }
         
         Write-Host "`nSummary:" -ForegroundColor Cyan
-        Write-Host "Successfully exported: $successCount indexes" -ForegroundColor Green
+        Write-Host "Successfully exported: ${successCount} indexes" -ForegroundColor Green
         if ($failCount -gt 0) {
-            Write-Host "Failed to export: $failCount indexes" -ForegroundColor Red
+            Write-Host "Failed to export: ${failCount} indexes" -ForegroundColor Red
         }
         
         if ($customizeNames) {
@@ -2853,14 +4395,14 @@ function Convert-WimToEsd {
     $backupPath = $null
 
     if ($shouldBackup) {
-        if ($Global:ConversionBackupPath) {
+        if ($Global:BackupPath) {
             $fileName = Split-Path $Global:InstallWimPath -Leaf
-            $defaultBackupPath = Join-Path $Global:ConversionBackupPath ($fileName + ".backup")
+            $defaultBackupPath = Join-Path $Global:BackupPath ($fileName + ".backup")
         } else {
             $defaultBackupPath = $Global:InstallWimPath + ".backup"
         }
         
-        Write-Host "`nDefault backup path: $defaultBackupPath" -ForegroundColor Green
+        Write-Host "`nDefault backup path: ${defaultBackupPath}" -ForegroundColor Green
         
         do {
             $customPath = Read-Host "Enter new path for backup (Press Enter for default)"
@@ -2878,7 +4420,7 @@ function Convert-WimToEsd {
                     } elseif (-not $directory) {
                         $finalBackupPath = Join-Path (Get-Location) $customPath
                     } else {
-                        Write-Host "Directory does not exist: $directory" -ForegroundColor Red
+                        Write-Host "Directory does not exist: ${directory}" -ForegroundColor Red
                         continue
                     }
                 } else {
@@ -2886,13 +4428,13 @@ function Convert-WimToEsd {
                         $fileName = Split-Path $Global:InstallWimPath -Leaf
                         $finalBackupPath = Join-Path $customPath ($fileName + ".backup")
                     } else {
-                        Write-Host "Directory does not exist: $customPath" -ForegroundColor Red
+                        Write-Host "Directory does not exist: ${customPath}" -ForegroundColor Red
                         continue
                     }
                 }
             }
             
-            Write-Host "Backup will be created at: $finalBackupPath" -ForegroundColor Cyan
+            Write-Host "Backup will be created at: ${finalBackupPath}" -ForegroundColor Cyan
             if (Test-Path $finalBackupPath) {
                 Write-Host "Warning: Backup file already exists!" -ForegroundColor Yellow
                 $overwriteBackup = Read-Host "Overwrite existing backup? (y/N)"
@@ -2933,10 +4475,10 @@ function Convert-WimToEsd {
     
     Write-Host "`nConversion Details:" -ForegroundColor Cyan
     Write-Host "Source: $Global:InstallWimPath" -ForegroundColor Gray
-    Write-Host "Target: $targetPath" -ForegroundColor Gray
-    Write-Host "Compression: $compressionType" -ForegroundColor Gray
+    Write-Host "Target: ${targetPath}" -ForegroundColor Gray
+    Write-Host "Compression: ${compressionType}" -ForegroundColor Gray
     if ($shouldBackup) {
-        Write-Host "Backup will be created: $backupPath" -ForegroundColor Gray
+        Write-Host "Backup will be created: ${backupPath}" -ForegroundColor Gray
     } else {
         Write-Host "No backup will be created" -ForegroundColor Gray
     }
@@ -2955,7 +4497,7 @@ function Convert-WimToEsd {
             Write-Host "`nCreating backup of original file..." -ForegroundColor Yellow
             try {
                 Copy-Item $Global:InstallWimPath $backupPath -Force
-                Write-Host "✓ Original file backed up to: $backupPath" -ForegroundColor Green
+                Write-Host "✓ Original file backed up to: ${backupPath}" -ForegroundColor Green
             } catch {
                 Write-Host "ERROR: Could not create backup: $($_.Exception.Message)" -ForegroundColor Red
                 $continueAnyway = Read-Host "Continue without backup? (y/N)"
@@ -2977,23 +4519,23 @@ function Convert-WimToEsd {
         $currentIndex = 0
         foreach ($index in $indexes) {
             $currentIndex++
-            Write-Host "`nExporting index $index ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
+            Write-Host "`nExporting index ${index} ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
             
             $indexInfo = dism /Get-WimInfo /WimFile:$Global:InstallWimPath /Index:$index 2>$null
-            $indexName = "Index $index"
+            $indexName = "Index ${index}"
             if ($indexInfo) {
                 $nameMatch = $indexInfo | Select-String "Name\s*:\s*(.+)"
                 if ($nameMatch) { $indexName = $nameMatch.Matches[0].Groups[1].Value.Trim() }
             }
             
-            Write-Host "Processing: $indexName" -ForegroundColor Gray
+            Write-Host "Processing: ${indexName}" -ForegroundColor Gray
             
             dism /Export-Image /SourceImageFile:$Global:InstallWimPath /SourceIndex:$index /DestinationImageFile:$targetPath /Compress:$compressionType /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ Successfully exported: $indexName" -ForegroundColor Green
+                Write-Host "✓ Successfully exported: ${indexName}" -ForegroundColor Green
             } else {
-                throw "Failed to export index $index"
+                throw "Failed to export index ${index}"
             }
         }
         
@@ -3006,11 +4548,11 @@ function Convert-WimToEsd {
             Write-Host "Your ISO structure now uses install.esd instead of install.wim" -ForegroundColor Cyan
             
             if ($shouldBackup) {
-                Write-Host "Original file has been safely backed up to: $backupPath" -ForegroundColor Cyan
+                Write-Host "Original file has been safely backed up to: ${backupPath}" -ForegroundColor Cyan
             }
             
             $backupText = if ($shouldBackup) { "(backup will remain) " } else { "(no backup exists) " }
-            $removeOriginal = Read-Host "`nRemove original file? $backupText(y/N)"
+            $removeOriginal = Read-Host "`nRemove original file? ${backupText}(y/N)"
             if ($removeOriginal.ToLower() -eq 'y') {
                 $originalToRemove = $Global:InstallWimPath -replace '\.esd$', '.wim'
                 if (Test-Path $originalToRemove) {
@@ -3027,7 +4569,7 @@ function Convert-WimToEsd {
         if (Test-Path $targetPath) {
             Write-Host "Cleaning up incomplete ESD file..." -ForegroundColor Yellow
             try { Remove-Item $targetPath -Force } catch { 
-                Write-Host "Warning: Could not remove incomplete ESD file: $targetPath" -ForegroundColor Yellow 
+                Write-Host "Warning: Could not remove incomplete ESD file: ${targetPath}" -ForegroundColor Yellow 
             }
         }
         Write-Host "Original WIM file remains unchanged." -ForegroundColor Green
@@ -3069,14 +4611,14 @@ function Convert-EsdToWim {
     $backupPath = $null
 
     if ($shouldBackup) {
-        if ($Global:ConversionBackupPath) {
+        if ($Global:BackupPath) {
             $fileName = Split-Path $Global:InstallWimPath -Leaf
-            $defaultBackupPath = Join-Path $Global:ConversionBackupPath ($fileName + ".backup")
+            $defaultBackupPath = Join-Path $Global:BackupPath ($fileName + ".backup")
         } else {
             $defaultBackupPath = $Global:InstallWimPath + ".backup"
         }
         
-        Write-Host "`nDefault backup path: $defaultBackupPath" -ForegroundColor Green
+        Write-Host "`nDefault backup path: ${defaultBackupPath}" -ForegroundColor Green
         
         do {
             $customPath = Read-Host "Enter new path for backup (Press Enter for default)"
@@ -3094,7 +4636,7 @@ function Convert-EsdToWim {
                     } elseif (-not $directory) {
                         $finalBackupPath = Join-Path (Get-Location) $customPath
                     } else {
-                        Write-Host "Directory does not exist: $directory" -ForegroundColor Red
+                        Write-Host "Directory does not exist: ${directory}" -ForegroundColor Red
                         continue
                     }
                 } else {
@@ -3102,13 +4644,13 @@ function Convert-EsdToWim {
                         $fileName = Split-Path $Global:InstallWimPath -Leaf
                         $finalBackupPath = Join-Path $customPath ($fileName + ".backup")
                     } else {
-                        Write-Host "Directory does not exist: $customPath" -ForegroundColor Red
+                        Write-Host "Directory does not exist: ${customPath}" -ForegroundColor Red
                         continue
                     }
                 }
             }
             
-            Write-Host "Backup will be created at: $finalBackupPath" -ForegroundColor Cyan
+            Write-Host "Backup will be created at: ${finalBackupPath}" -ForegroundColor Cyan
             if (Test-Path $finalBackupPath) {
                 Write-Host "Warning: Backup file already exists!" -ForegroundColor Yellow
                 $overwriteBackup = Read-Host "Overwrite existing backup? (y/N)"
@@ -3149,10 +4691,10 @@ function Convert-EsdToWim {
     
     Write-Host "`nConversion Details:" -ForegroundColor Cyan
     Write-Host "Source: $Global:InstallWimPath" -ForegroundColor Gray
-    Write-Host "Target: $targetPath" -ForegroundColor Gray
-    Write-Host "Compression: $compressionType" -ForegroundColor Gray
+    Write-Host "Target: ${targetPath}" -ForegroundColor Gray
+    Write-Host "Compression: ${compressionType}" -ForegroundColor Gray
     if ($shouldBackup) {
-        Write-Host "Backup will be created: $backupPath" -ForegroundColor Gray
+        Write-Host "Backup will be created: ${backupPath}" -ForegroundColor Gray
     } else {
         Write-Host "No backup will be created" -ForegroundColor Gray
     }
@@ -3171,7 +4713,7 @@ function Convert-EsdToWim {
             Write-Host "`nCreating backup of original file..." -ForegroundColor Yellow
             try {
                 Copy-Item $Global:InstallWimPath $backupPath -Force
-                Write-Host "✓ Original file backed up to: $backupPath" -ForegroundColor Green
+                Write-Host "✓ Original file backed up to: ${backupPath}" -ForegroundColor Green
             } catch {
                 Write-Host "ERROR: Could not create backup: $($_.Exception.Message)" -ForegroundColor Red
                 $continueAnyway = Read-Host "Continue without backup? (y/N)"
@@ -3193,23 +4735,23 @@ function Convert-EsdToWim {
         $currentIndex = 0
         foreach ($index in $indexes) {
             $currentIndex++
-            Write-Host "`nExporting index $index ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
+            Write-Host "`nExporting index ${index} ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
             
             $indexInfo = dism /Get-WimInfo /WimFile:$Global:InstallWimPath /Index:$index 2>$null
-            $indexName = "Index $index"
+            $indexName = "Index ${index}"
             if ($indexInfo) {
                 $nameMatch = $indexInfo | Select-String "Name\s*:\s*(.+)"
                 if ($nameMatch) { $indexName = $nameMatch.Matches[0].Groups[1].Value.Trim() }
             }
             
-            Write-Host "Processing: $indexName" -ForegroundColor Gray
+            Write-Host "Processing: ${indexName}" -ForegroundColor Gray
             
             dism /Export-Image /SourceImageFile:$Global:InstallWimPath /SourceIndex:$index /DestinationImageFile:$targetPath /Compress:$compressionType /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ Successfully exported: $indexName" -ForegroundColor Green
+                Write-Host "✓ Successfully exported: ${indexName}" -ForegroundColor Green
             } else {
-                throw "Failed to export index $index"
+                throw "Failed to export index ${index}"
             }
         }
         
@@ -3222,11 +4764,11 @@ function Convert-EsdToWim {
             Write-Host "Your ISO structure now uses install.wim instead of install.esd" -ForegroundColor Cyan
             
             if ($shouldBackup) {
-                Write-Host "Original file has been safely backed up to: $backupPath" -ForegroundColor Cyan
+                Write-Host "Original file has been safely backed up to: ${backupPath}" -ForegroundColor Cyan
             }
             
             $backupText = if ($shouldBackup) { "(backup will remain) " } else { "(no backup exists) " }
-            $removeOriginal = Read-Host "`nRemove original file? $backupText(y/N)"
+            $removeOriginal = Read-Host "`nRemove original file? ${backupText}(y/N)"
             if ($removeOriginal.ToLower() -eq 'y') {
                 $originalToRemove = $Global:InstallWimPath -replace '\.wim$', '.esd'
                 if (Test-Path $originalToRemove) {
@@ -3243,7 +4785,7 @@ function Convert-EsdToWim {
         if (Test-Path $targetPath) {
             Write-Host "Cleaning up incomplete WIM file..." -ForegroundColor Yellow
             try { Remove-Item $targetPath -Force } catch { 
-                Write-Host "Warning: Could not remove incomplete WIM file: $targetPath" -ForegroundColor Yellow 
+                Write-Host "Warning: Could not remove incomplete WIM file: ${targetPath}" -ForegroundColor Yellow 
             }
         }
         Write-Host "Original ESD file remains unchanged." -ForegroundColor Green
@@ -3285,14 +4827,14 @@ function Convert-WimToWim {
     $backupPath = $null
 
     if ($shouldBackup) {
-        if ($Global:ConversionBackupPath) {
+        if ($Global:BackupPath) {
             $fileName = Split-Path $Global:InstallWimPath -Leaf
-            $defaultBackupPath = Join-Path $Global:ConversionBackupPath ($fileName + ".backup")
+            $defaultBackupPath = Join-Path $Global:BackupPath ($fileName + ".backup")
         } else {
             $defaultBackupPath = $Global:InstallWimPath + ".backup"
         }
         
-        Write-Host "`nDefault backup path: $defaultBackupPath" -ForegroundColor Green
+        Write-Host "`nDefault backup path: ${defaultBackupPath}" -ForegroundColor Green
         
         do {
             $customPath = Read-Host "Enter new path for backup (Press Enter for default)"
@@ -3310,7 +4852,7 @@ function Convert-WimToWim {
                     } elseif (-not $directory) {
                         $finalBackupPath = Join-Path (Get-Location) $customPath
                     } else {
-                        Write-Host "Directory does not exist: $directory" -ForegroundColor Red
+                        Write-Host "Directory does not exist: ${directory}" -ForegroundColor Red
                         continue
                     }
                 } else {
@@ -3318,13 +4860,13 @@ function Convert-WimToWim {
                         $fileName = Split-Path $Global:InstallWimPath -Leaf
                         $finalBackupPath = Join-Path $customPath ($fileName + ".backup")
                     } else {
-                        Write-Host "Directory does not exist: $customPath" -ForegroundColor Red
+                        Write-Host "Directory does not exist: ${customPath}" -ForegroundColor Red
                         continue
                     }
                 }
             }
             
-            Write-Host "Backup will be created at: $finalBackupPath" -ForegroundColor Cyan
+            Write-Host "Backup will be created at: ${finalBackupPath}" -ForegroundColor Cyan
             if (Test-Path $finalBackupPath) {
                 Write-Host "Warning: Backup file already exists!" -ForegroundColor Yellow
                 $overwriteBackup = Read-Host "Overwrite existing backup? (y/N)"
@@ -3365,10 +4907,10 @@ function Convert-WimToWim {
     
     Write-Host "`nRecompression Details:" -ForegroundColor Cyan
     Write-Host "Source: $Global:InstallWimPath" -ForegroundColor Gray
-    Write-Host "Target: $targetPath" -ForegroundColor Gray
-    Write-Host "Compression: $compressionType" -ForegroundColor Gray
+    Write-Host "Target: ${targetPath}" -ForegroundColor Gray
+    Write-Host "Compression: ${compressionType}" -ForegroundColor Gray
     if ($shouldBackup) {
-        Write-Host "Backup will be created: $backupPath" -ForegroundColor Gray
+        Write-Host "Backup will be created: ${backupPath}" -ForegroundColor Gray
     } else {
         Write-Host "No backup will be created" -ForegroundColor Gray
     }
@@ -3385,7 +4927,7 @@ function Convert-WimToWim {
             Write-Host "`nCreating backup of original file..." -ForegroundColor Yellow
             try {
                 Copy-Item $Global:InstallWimPath $backupPath -Force
-                Write-Host "✓ Original file backed up to: $backupPath" -ForegroundColor Green
+                Write-Host "✓ Original file backed up to: ${backupPath}" -ForegroundColor Green
             } catch {
                 Write-Host "ERROR: Could not create backup: $($_.Exception.Message)" -ForegroundColor Red
                 $continueAnyway = Read-Host "Continue without backup? (y/N)"
@@ -3407,23 +4949,23 @@ function Convert-WimToWim {
         $currentIndex = 0
         foreach ($index in $indexes) {
             $currentIndex++
-            Write-Host "`nExporting index $index ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
+            Write-Host "`nExporting index ${index} ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
             
             $indexInfo = dism /Get-WimInfo /WimFile:$Global:InstallWimPath /Index:$index 2>$null
-            $indexName = "Index $index"
+            $indexName = "Index ${index}"
             if ($indexInfo) {
                 $nameMatch = $indexInfo | Select-String "Name\s*:\s*(.+)"
                 if ($nameMatch) { $indexName = $nameMatch.Matches[0].Groups[1].Value.Trim() }
             }
             
-            Write-Host "Processing: $indexName" -ForegroundColor Gray
+            Write-Host "Processing: ${indexName}" -ForegroundColor Gray
             
             dism /Export-Image /SourceImageFile:$Global:InstallWimPath /SourceIndex:$index /DestinationImageFile:$targetPath /Compress:$compressionType /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ Successfully exported: $indexName" -ForegroundColor Green
+                Write-Host "✓ Successfully exported: ${indexName}" -ForegroundColor Green
             } else {
-                throw "Failed to export index $index"
+                throw "Failed to export index ${index}"
             }
         }
         
@@ -3434,17 +4976,17 @@ function Convert-WimToWim {
             Write-Host "Your WIM file has been recompressed with the new compression settings" -ForegroundColor Cyan
             
             if ($shouldBackup) {
-                Write-Host "Original file has been safely backed up to: $backupPath" -ForegroundColor Cyan
+                Write-Host "Original file has been safely backed up to: ${backupPath}" -ForegroundColor Cyan
             }
             
             $backupText = if ($shouldBackup) { "(backup will remain) " } else { "(no backup exists) " }
-            $removeOriginal = Read-Host "`nReplace original install.wim with recompressed version? $backupText(Y/n)"
+            $removeOriginal = Read-Host "`nReplace original install.wim with recompressed version? ${backupText}(Y/n)"
             if ($removeOriginal.ToLower() -ne 'n') {
                 Remove-Item $Global:InstallWimPath -Force
                 Move-Item $targetPath $Global:InstallWimPath -Force
                 Write-Host "✓ Original install.wim replaced with recompressed version" -ForegroundColor Green
             } else {
-                Write-Host "Recompressed file saved as: $targetPath" -ForegroundColor Cyan
+                Write-Host "Recompressed file saved as: ${targetPath}" -ForegroundColor Cyan
                 Write-Host "Original file remains unchanged" -ForegroundColor Green
                 Write-Host "You can manually replace it later if desired." -ForegroundColor Gray
             }
@@ -3457,7 +4999,7 @@ function Convert-WimToWim {
         if (Test-Path $targetPath) {
             Write-Host "Cleaning up incomplete WIM file..." -ForegroundColor Yellow
             try { Remove-Item $targetPath -Force } catch { 
-                Write-Host "Warning: Could not remove incomplete WIM file: $targetPath" -ForegroundColor Yellow 
+                Write-Host "Warning: Could not remove incomplete WIM file: ${targetPath}" -ForegroundColor Yellow 
             }
         }
         Write-Host "Original WIM file remains unchanged." -ForegroundColor Green
@@ -3499,14 +5041,14 @@ function Convert-EsdToEsd {
     $backupPath = $null
 
     if ($shouldBackup) {
-        if ($Global:ConversionBackupPath) {
+        if ($Global:BackupPath) {
             $fileName = Split-Path $Global:InstallWimPath -Leaf
-            $defaultBackupPath = Join-Path $Global:ConversionBackupPath ($fileName + ".backup")
+            $defaultBackupPath = Join-Path $Global:BackupPath ($fileName + ".backup")
         } else {
             $defaultBackupPath = $Global:InstallWimPath + ".backup"
         }
         
-        Write-Host "`nDefault backup path: $defaultBackupPath" -ForegroundColor Green
+        Write-Host "`nDefault backup path: ${defaultBackupPath}" -ForegroundColor Green
         
         do {
             $customPath = Read-Host "Enter new path for backup (Press Enter for default)"
@@ -3524,7 +5066,7 @@ function Convert-EsdToEsd {
                     } elseif (-not $directory) {
                         $finalBackupPath = Join-Path (Get-Location) $customPath
                     } else {
-                        Write-Host "Directory does not exist: $directory" -ForegroundColor Red
+                        Write-Host "Directory does not exist: ${directory}" -ForegroundColor Red
                         continue
                     }
                 } else {
@@ -3532,13 +5074,13 @@ function Convert-EsdToEsd {
                         $fileName = Split-Path $Global:InstallWimPath -Leaf
                         $finalBackupPath = Join-Path $customPath ($fileName + ".backup")
                     } else {
-                        Write-Host "Directory does not exist: $customPath" -ForegroundColor Red
+                        Write-Host "Directory does not exist: ${customPath}" -ForegroundColor Red
                         continue
                     }
                 }
             }
             
-            Write-Host "Backup will be created at: $finalBackupPath" -ForegroundColor Cyan
+            Write-Host "Backup will be created at: ${finalBackupPath}" -ForegroundColor Cyan
             if (Test-Path $finalBackupPath) {
                 Write-Host "Warning: Backup file already exists!" -ForegroundColor Yellow
                 $overwriteBackup = Read-Host "Overwrite existing backup? (y/N)"
@@ -3579,10 +5121,10 @@ function Convert-EsdToEsd {
     
     Write-Host "`nRecompression Details:" -ForegroundColor Cyan
     Write-Host "Source: $Global:InstallWimPath" -ForegroundColor Gray
-    Write-Host "Target: $targetPath" -ForegroundColor Gray
-    Write-Host "Compression: $compressionType" -ForegroundColor Gray
+    Write-Host "Target: ${targetPath}" -ForegroundColor Gray
+    Write-Host "Compression: ${compressionType}" -ForegroundColor Gray
     if ($shouldBackup) {
-        Write-Host "Backup will be created: $backupPath" -ForegroundColor Gray
+        Write-Host "Backup will be created: ${backupPath}" -ForegroundColor Gray
     } else {
         Write-Host "No backup will be created" -ForegroundColor Gray
     }
@@ -3599,7 +5141,7 @@ function Convert-EsdToEsd {
             Write-Host "`nCreating backup of original file..." -ForegroundColor Yellow
             try {
                 Copy-Item $Global:InstallWimPath $backupPath -Force
-                Write-Host "✓ Original file backed up to: $backupPath" -ForegroundColor Green
+                Write-Host "✓ Original file backed up to: ${backupPath}" -ForegroundColor Green
             } catch {
                 Write-Host "ERROR: Could not create backup: $($_.Exception.Message)" -ForegroundColor Red
                 $continueAnyway = Read-Host "Continue without backup? (y/N)"
@@ -3621,23 +5163,23 @@ function Convert-EsdToEsd {
         $currentIndex = 0
         foreach ($index in $indexes) {
             $currentIndex++
-            Write-Host "`nExporting index $index ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
+            Write-Host "`nExporting index ${index} ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
             
             $indexInfo = dism /Get-WimInfo /WimFile:$Global:InstallWimPath /Index:$index 2>$null
-            $indexName = "Index $index"
+            $indexName = "Index ${index}"
             if ($indexInfo) {
                 $nameMatch = $indexInfo | Select-String "Name\s*:\s*(.+)"
                 if ($nameMatch) { $indexName = $nameMatch.Matches[0].Groups[1].Value.Trim() }
             }
             
-            Write-Host "Processing: $indexName" -ForegroundColor Gray
+            Write-Host "Processing: ${indexName}" -ForegroundColor Gray
             
             dism /Export-Image /SourceImageFile:$Global:InstallWimPath /SourceIndex:$index /DestinationImageFile:$targetPath /Compress:$compressionType /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ Successfully exported: $indexName" -ForegroundColor Green
+                Write-Host "✓ Successfully exported: ${indexName}" -ForegroundColor Green
             } else {
-                throw "Failed to export index $index"
+                throw "Failed to export index ${index}"
             }
         }
         
@@ -3648,17 +5190,17 @@ function Convert-EsdToEsd {
             Write-Host "Your ESD file has been recompressed with the new compression settings" -ForegroundColor Cyan
             
             if ($shouldBackup) {
-                Write-Host "Original file has been safely backed up to: $backupPath" -ForegroundColor Cyan
+                Write-Host "Original file has been safely backed up to: ${backupPath}" -ForegroundColor Cyan
             }
             
             $backupText = if ($shouldBackup) { "(backup will remain) " } else { "(no backup exists) " }
-            $removeOriginal = Read-Host "`nReplace original install.esd with recompressed version? $backupText(Y/n)"
+            $removeOriginal = Read-Host "`nReplace original install.esd with recompressed version? ${backupText}(Y/n)"
             if ($removeOriginal.ToLower() -ne 'n') {
                 Remove-Item $Global:InstallWimPath -Force
                 Move-Item $targetPath $Global:InstallWimPath -Force
                 Write-Host "✓ Original install.esd replaced with recompressed version" -ForegroundColor Green
             } else {
-                Write-Host "Recompressed file saved as: $targetPath" -ForegroundColor Cyan
+                Write-Host "Recompressed file saved as: ${targetPath}" -ForegroundColor Cyan
                 Write-Host "Original file remains unchanged" -ForegroundColor Green
                 Write-Host "You can manually replace it later if desired." -ForegroundColor Gray
             }
@@ -3671,7 +5213,7 @@ function Convert-EsdToEsd {
         if (Test-Path $targetPath) {
             Write-Host "Cleaning up incomplete ESD file..." -ForegroundColor Yellow
             try { Remove-Item $targetPath -Force } catch { 
-                Write-Host "Warning: Could not remove incomplete ESD file: $targetPath" -ForegroundColor Yellow 
+                Write-Host "Warning: Could not remove incomplete ESD file: ${targetPath}" -ForegroundColor Yellow 
             }
         }
         Write-Host "Original ESD file remains unchanged." -ForegroundColor Green
@@ -3820,12 +5362,12 @@ function Get-CurrentEdition {
     $Global:CleanupRequired = $true
     
     try {
-        Write-Host "`nMounting WIM/ESD index $indexNumber..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${indexNumber}..." -ForegroundColor Yellow
         $Global:CurrentOperation = "Mounting"
         dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$indexNumber /MountDir:$Global:MountPath /CheckIntegrity /ReadOnly
         
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to mount WIM/ESD index $indexNumber"
+            throw "Failed to mount WIM/ESD index ${indexNumber}"
         }
         
         Write-Host "`nCurrent Edition Information:" -ForegroundColor Cyan
@@ -3893,12 +5435,12 @@ function Get-TargetEditions {
     $Global:CleanupRequired = $true
     
     try {
-        Write-Host "`nMounting WIM/ESD index $indexNumber..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${indexNumber}..." -ForegroundColor Yellow
         $Global:CurrentOperation = "Mounting"
         dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$indexNumber /MountDir:$Global:MountPath /CheckIntegrity /ReadOnly
         
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to mount WIM/ESD index $indexNumber"
+            throw "Failed to mount WIM/ESD index ${indexNumber}"
         }
         
         Write-Host "`nCurrent Edition:" -ForegroundColor Cyan
@@ -3977,12 +5519,12 @@ function Set-Edition {
     $Global:CleanupRequired = $true
     
     try {
-        Write-Host "`nMounting WIM/ESD index $indexNumber..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${indexNumber}..." -ForegroundColor Yellow
         $Global:CurrentOperation = "Mounting"
         dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$indexNumber /MountDir:$Global:MountPath /CheckIntegrity
         
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to mount WIM/ESD index $indexNumber"
+            throw "Failed to mount WIM/ESD index ${indexNumber}"
         }
         
         Write-Host "`nCurrent Edition:" -ForegroundColor Cyan
@@ -4009,25 +5551,110 @@ function Set-Edition {
         Write-Host ""
         Write-Host "Product Key Setup:" -ForegroundColor Cyan
         Write-Host "You can type the product key in lowercase - it will be automatically converted to uppercase." -ForegroundColor Gray
-        $productKeyInput = Read-Host "Enter the product key for the new edition (format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX)"
         
+        # Check for recommended RTM key based on target edition
+        $recommendedKeyName = Get-KeyNameFromTargetEdition -TargetEdition $targetEdition
         $productKey = ""
-        if ($productKeyInput -and $productKeyInput.Length -ge 25) {
-            $productKey = $productKeyInput.ToUpper()
-            Write-Host "Product key to be used: $productKey" -ForegroundColor Green
+        
+        if ($recommendedKeyName) {
+            # Search for exact matches in both RTM and KMS collections
+            $rtmMatch = Find-ExactMatchOnly -SearchTerm $recommendedKeyName -KeyCollection $Global:RTMKeys -KeyType "RTM"
+            $kmsMatch = Find-ExactMatchOnly -SearchTerm $recommendedKeyName -KeyCollection $Global:KMSClientKeys -KeyType "KMS Client"
             
-            $confirmKey = Read-Host "Is this product key correct? (Y/n)"
-            if ($confirmKey.ToLower() -eq 'n') {
-                Write-Host "Operation cancelled due to product key confirmation." -ForegroundColor Yellow
-                dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
-                return
+            $recommendations = @()
+            if ($rtmMatch) { $recommendations += $rtmMatch }
+            if ($kmsMatch) { $recommendations += $kmsMatch }
+            
+            if ($recommendations.Count -gt 0) {
+                Write-Host ""
+                Write-Host "Recommended Product Keys for $targetEdition :" -ForegroundColor Green
+                Write-Host "===============================================" -ForegroundColor Green
+                $i = 1
+                foreach ($rec in $recommendations) {
+                    Write-Host "$i. $($rec.Type): $($rec.EditionName)" -ForegroundColor Cyan
+                    Write-Host "   Key: $($rec.Key)" -ForegroundColor Green
+                    Write-Host "   Reason: $($rec.Reason)" -ForegroundColor Gray
+                    Write-Host ""
+                    $i++
+                }
+                
+                Write-Host "Options:" -ForegroundColor Yellow
+                Write-Host "1-$($recommendations.Count). Use recommended key" -ForegroundColor Green
+                Write-Host "$($recommendations.Count + 1). Enter custom key" -ForegroundColor Yellow
+                Write-Host "$($recommendations.Count + 2). Continue without key" -ForegroundColor Red
+                
+                do {
+                    $choice = Read-Host "Select option"
+                    $choiceNum = 0
+                    if ([int]::TryParse($choice, [ref]$choiceNum)) {
+                        if ($choiceNum -ge 1 -and $choiceNum -le $recommendations.Count) {
+                            $productKey = $recommendations[$choiceNum - 1].Key
+                            Write-Host "Selected: $($recommendations[$choiceNum - 1].EditionName) ($($recommendations[$choiceNum - 1].Type))" -ForegroundColor Green
+                            break
+                        } elseif ($choiceNum -eq ($recommendations.Count + 1)) {
+                            $productKeyInput = Read-Host "Enter the product key for the new edition (format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX)"
+                            if ($productKeyInput -and $productKeyInput.Length -ge 25) {
+                                $productKey = $productKeyInput.ToUpper()
+                                Write-Host "Product key to be used: $productKey" -ForegroundColor Green
+                                
+                                $confirmKey = Read-Host "Is this product key correct? (Y/n)"
+                                if ($confirmKey.ToLower() -eq 'n') {
+                                    Write-Host "Operation cancelled due to product key confirmation." -ForegroundColor Yellow
+                                    dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                                    return
+                                }
+                            }
+                            break
+                        } elseif ($choiceNum -eq ($recommendations.Count + 2)) {
+                            $productKey = ""
+                            break
+                        }
+                    }
+                    Write-Host "Invalid selection. Please try again." -ForegroundColor Red
+                } while ($true)
+            } else {
+                # No recommendations found, fall back to manual entry
+                $productKeyInput = Read-Host "Enter the product key for the new edition (format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX)"
+                if ($productKeyInput -and $productKeyInput.Length -ge 25) {
+                    $productKey = $productKeyInput.ToUpper()
+                    Write-Host "Product key to be used: $productKey" -ForegroundColor Green
+                    
+                    $confirmKey = Read-Host "Is this product key correct? (Y/n)"
+                    if ($confirmKey.ToLower() -eq 'n') {
+                        Write-Host "Operation cancelled due to product key confirmation." -ForegroundColor Yellow
+                        dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                        return
+                    }
+                } else {
+                    Write-Host "Invalid or missing product key. Edition upgrade requires a valid product key." -ForegroundColor Red
+                    $proceed = Read-Host "Continue without product key? (y/N)"
+                    if ($proceed.ToLower() -ne 'y') {
+                        dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                        return
+                    }
+                }
             }
         } else {
-            Write-Host "Invalid or missing product key. Edition upgrade requires a valid product key." -ForegroundColor Red
-            $proceed = Read-Host "Continue without product key? (y/N)"
-            if ($proceed.ToLower() -ne 'y') {
-                dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
-                return
+            # No mapping available for this target edition, fall back to manual entry
+            Write-Host "No recommended keys available for edition: $targetEdition" -ForegroundColor Yellow
+            $productKeyInput = Read-Host "Enter the product key for the new edition (format: XXXXX-XXXXX-XXXXX-XXXXX-XXXXX)"
+            if ($productKeyInput -and $productKeyInput.Length -ge 25) {
+                $productKey = $productKeyInput.ToUpper()
+                Write-Host "Product key to be used: $productKey" -ForegroundColor Green
+                
+                $confirmKey = Read-Host "Is this product key correct? (Y/n)"
+                if ($confirmKey.ToLower() -eq 'n') {
+                    Write-Host "Operation cancelled due to product key confirmation." -ForegroundColor Yellow
+                    dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                    return
+                }
+            } else {
+                Write-Host "Invalid or missing product key. Edition upgrade requires a valid product key." -ForegroundColor Red
+                $proceed = Read-Host "Continue without product key? (y/N)"
+                if ($proceed.ToLower() -ne 'y') {
+                    dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                    return
+                }
             }
         }
         
@@ -4276,12 +5903,12 @@ function Update-IndexMetadataWithWimlib {
     try {
         & $wimlibPath info $Global:InstallWimPath $indexNumber
         if ($LASTEXITCODE -ne 0) {
-            Write-Host "Invalid index number: $indexNumber" -ForegroundColor Red
+            Write-Host "Invalid index number: ${indexNumber}" -ForegroundColor Red
             Read-Host "Press Enter to continue"
             return
         }
     } catch {
-        Write-Host "Error getting current metadata for index $indexNumber" -ForegroundColor Red
+        Write-Host "Error getting current metadata for index ${indexNumber}" -ForegroundColor Red
         Read-Host "Press Enter to continue"
         return
     }
@@ -4429,20 +6056,20 @@ function Get-BackupPath {
     $createBackup = Read-Host "`nCreate backup of original $($SourceFormat.ToUpper()) before $($OperationType.ToLower())? (y/N)"
     if ($createBackup.ToLower() -ne 'y') { return $null }
     
-    $defaultBackupPath = if ($Global:ConversionBackupPath) {
+    $defaultBackupPath = if ($Global:BackupPath) {
         $fileName = Split-Path $Global:InstallWimPath -Leaf
-        Join-Path $Global:ConversionBackupPath ($fileName + ".backup")
+        Join-Path $Global:BackupPath ($fileName + ".backup")
     } else {
         $Global:InstallWimPath -replace "\.$SourceFormat`$", ".$SourceFormat.backup"
     }
     
-    Write-Host "`nDefault backup path: $defaultBackupPath" -ForegroundColor Green
+    Write-Host "`nDefault backup path: ${defaultBackupPath}" -ForegroundColor Green
     
     do {
         $customPath = Read-Host "Enter new path for backup (Press Enter for default)"
         
         if (-not $customPath) {
-            if ($Global:ConversionBackupPath) {
+            if ($Global:BackupPath) {
                 $backupDir = Split-Path $defaultBackupPath -Parent
                 if (-not (Test-Path $backupDir)) {
                     try {
@@ -4467,14 +6094,14 @@ function Get-BackupPath {
                 } elseif (-not $directory) {
                     return Join-Path (Get-Location) $customPath
                 } else {
-                    Write-Host "Directory does not exist: $directory" -ForegroundColor Red
+                    Write-Host "Directory does not exist: ${directory}" -ForegroundColor Red
                 }
             } else {
                 if (Test-Path $customPath) {
                     $fileName = Split-Path $Global:InstallWimPath -Leaf
                     return Join-Path $customPath ($fileName + ".backup")
                 } else {
-                    Write-Host "Directory does not exist: $customPath" -ForegroundColor Red
+                    Write-Host "Directory does not exist: ${customPath}" -ForegroundColor Red
                 }
             }
         }
@@ -4529,28 +6156,28 @@ function Invoke-ImageConversion {
     $currentIndex = 0
     foreach ($index in $indexes) {
         $currentIndex++
-        Write-Host "`nExporting index $index ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
+        Write-Host "`nExporting index ${index} ($currentIndex of $($indexes.Count))..." -ForegroundColor Yellow
         
         try {
             $indexInfo = dism /Get-WimInfo /WimFile:$SourcePath /Index:$index 2>$null
-            $indexName = "Index $index"
+            $indexName = "Index ${index}"
             if ($indexInfo) {
                 $nameMatch = $indexInfo | Select-String "Name\s*:\s*(.+)"
                 if ($nameMatch) { $indexName = $nameMatch.Matches[0].Groups[1].Value.Trim() }
             }
             
-            Write-Host "Processing: $indexName" -ForegroundColor Gray
+            Write-Host "Processing: ${indexName}" -ForegroundColor Gray
             
             dism /Export-Image /SourceImageFile:$SourcePath /SourceIndex:$index /DestinationImageFile:$TargetPath /Compress:$CompressionType /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ Successfully exported: $indexName" -ForegroundColor Green
+                Write-Host "✓ Successfully exported: ${indexName}" -ForegroundColor Green
             } else {
-                throw "Failed to export index $index"
+                throw "Failed to export index ${index}"
             }
             
         } catch {
-            Write-Host "✗ Error exporting index $index : $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "✗ Error exporting index ${index} : $($_.Exception.Message)" -ForegroundColor Red
             return $false
         }
     }
@@ -4567,7 +6194,7 @@ function Handle-OriginalFileCleanup {
     
     if (-not $IsRecompression) {
         $backupText = if ($BackupPath) { "(backup will remain) " } else { "(no backup exists) " }
-        $removeOriginal = Read-Host "`nRemove original install.$SourceFormat? $backupText(y/N)"
+        $removeOriginal = Read-Host "`nRemove original install.$SourceFormat? ${backupText}(y/N)"
         
         if ($removeOriginal.ToLower() -eq 'y') {
             $originalToRemove = $Global:InstallWimPath -replace "\.$TargetFormat`$", ".$SourceFormat"
@@ -4742,7 +6369,7 @@ function Remove-DriversFromWim {
             
             foreach ($index in $indexes) {
                 if ($index -ne $baseIndex) {
-                    Write-Host "`n--- Processing Index $index ---" -ForegroundColor Magenta
+                    Write-Host "`n--- Processing Index ${index} ---" -ForegroundColor Magenta
                     Remove-DriversFromIndex -IndexNumber $index -IsMultiIndex $true -IsFirstIndex $false
                 }
             }
@@ -4767,12 +6394,12 @@ function Remove-DriversFromIndex {
     )
     
     try {
-        Write-Host "`nMounting WIM/ESD index $IndexNumber..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${IndexNumber}..." -ForegroundColor Yellow
         $Global:CurrentOperation = "Mounting"
         dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$IndexNumber /MountDir:$Global:MountPath /CheckIntegrity
         
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to mount WIM/ESD index $IndexNumber"
+            throw "Failed to mount WIM/ESD index ${IndexNumber}"
         }
         
         if ($IsMultiIndex -and -not $IsFirstIndex) {
@@ -4795,7 +6422,7 @@ function Remove-DriversFromIndex {
         } else {
             do {
                 Clear-Host
-                Write-Host "Driver Removal - Index: $IndexNumber" -ForegroundColor Cyan
+                Write-Host "Driver Removal - Index: ${IndexNumber}" -ForegroundColor Cyan
                 Write-Host "====================================" -ForegroundColor Cyan
                 Write-Host ""
                 Write-Host "1. View all installed drivers" -ForegroundColor Yellow
@@ -4819,9 +6446,9 @@ function Remove-DriversFromIndex {
                         dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
                         
                         if ($LASTEXITCODE -eq 0) {
-                            Write-Host "SUCCESS: Changes committed for index $IndexNumber" -ForegroundColor Green
+                            Write-Host "SUCCESS: Changes committed for index ${IndexNumber}" -ForegroundColor Green
                         } else {
-                            throw "Failed to commit changes for index $IndexNumber"
+                            throw "Failed to commit changes for index ${IndexNumber}"
                         }
                         return
                     }
@@ -4845,14 +6472,14 @@ function Remove-DriversFromIndex {
             dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "SUCCESS: Changes committed for index $IndexNumber" -ForegroundColor Green
+                Write-Host "SUCCESS: Changes committed for index ${IndexNumber}" -ForegroundColor Green
             } else {
-                throw "Failed to commit changes for index $IndexNumber"
+                throw "Failed to commit changes for index ${IndexNumber}"
             }
         }
         
     } catch {
-        Write-Host "ERROR processing index $IndexNumber : $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "ERROR processing index ${IndexNumber} : $($_.Exception.Message)" -ForegroundColor Red
         Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
         try {
             dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
@@ -5000,12 +6627,12 @@ function Export-DriversFromMountedImage {
             Write-Host "Created export directory: $exportPath" -ForegroundColor Green
         }
         
-        Write-Host "`nMounting WIM/ESD index $indexNumber..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${indexNumber}..." -ForegroundColor Yellow
         $Global:CurrentOperation = "Mounting"
         dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$indexNumber /MountDir:$Global:MountPath /CheckIntegrity /ReadOnly
         
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to mount WIM/ESD index $indexNumber"
+            throw "Failed to mount WIM/ESD index ${indexNumber}"
         }
         
         Write-Host "Exporting drivers from mounted image..." -ForegroundColor Yellow
@@ -5288,7 +6915,7 @@ function Set-WimlibPath {
                     $versionOutput = & $wimlibExe --version 2>$null
                     if ($LASTEXITCODE -eq 0 -and $versionOutput) {
                         $Global:WimlibPath = $validatedPath
-                        Write-Host "✓ Wimlib path set successfully: $validatedPath" -ForegroundColor Green
+                        Write-Host "✓ Wimlib path set successfully: ${validatedPath}" -ForegroundColor Green
                         Write-Host "✓ Version: $($versionOutput | Select-Object -First 1)" -ForegroundColor Green
                         
                         # Check for all .cmd files
@@ -5323,7 +6950,7 @@ function Set-WimlibPath {
                     Write-Host "Error testing wimlib-imagex: $($_.Exception.Message)" -ForegroundColor Red
                 }
             } else {
-                Write-Host "wimlib-imagex.exe not found in: $validatedPath" -ForegroundColor Red
+                Write-Host "wimlib-imagex.exe not found in: ${validatedPath}" -ForegroundColor Red
                 Write-Host "Expected: $wimlibExe" -ForegroundColor Gray
                 
                 # Show what files are in the directory
@@ -5473,12 +7100,12 @@ function Get-ProductKeyForBaseIndex {
     $Global:CleanupRequired = $true
     
     try {
-        Write-Host "`nMounting WIM/ESD index $IndexNumber for product key selection..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${IndexNumber} for product key selection..." -ForegroundColor Yellow
         $Global:CurrentOperation = "Mounting"
         dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$IndexNumber /MountDir:$Global:MountPath /CheckIntegrity /ReadOnly
         
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to mount WIM/ESD index $IndexNumber"
+            throw "Failed to mount WIM/ESD index ${IndexNumber}"
         }
         
         # Detect edition information
@@ -5486,7 +7113,7 @@ function Get-ProductKeyForBaseIndex {
         
         Write-Host "`nDetected Edition Information for Base Index:" -ForegroundColor Cyan
         Write-Host "=============================================" -ForegroundColor Cyan
-        Write-Host "Index: $IndexNumber" -ForegroundColor Gray
+        Write-Host "Index: ${IndexNumber}" -ForegroundColor Gray
         Write-Host "Name: $($editionInfo.Name)" -ForegroundColor Yellow
         Write-Host "Description: $($editionInfo.Description)" -ForegroundColor Gray
         Write-Host "Edition: $($editionInfo.Edition)" -ForegroundColor Yellow
@@ -5554,7 +7181,7 @@ function Get-ProductKeyForBaseIndex {
         return $selectedKey
         
     } catch {
-        Write-Host "ERROR: Failed to get product key for base index $IndexNumber - $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "ERROR: Failed to get product key for base index ${IndexNumber} - $($_.Exception.Message)" -ForegroundColor Red
         
         Write-Host "Attempting to unmount base index..." -ForegroundColor Yellow
         try {
@@ -5614,15 +7241,15 @@ function Set-ProductKeyForAllIndexes {
     
     # Process each index individually with full DISM output visibility
     foreach ($index in $indexes) {
-        Write-Host "`n--- Processing Index $index ---" -ForegroundColor Magenta
+        Write-Host "`n--- Processing Index ${index} ---" -ForegroundColor Magenta
         
         try {
-            Write-Host "`nMounting WIM/ESD index $index..." -ForegroundColor Yellow
-            $Global:CurrentOperation = "Mounting Index $index"
+            Write-Host "`nMounting WIM/ESD index ${index}..." -ForegroundColor Yellow
+            $Global:CurrentOperation = "Mounting Index ${index}"
             dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$index /MountDir:$Global:MountPath /CheckIntegrity
             
             if ($LASTEXITCODE -ne 0) {
-                Write-Host "✗ Failed to mount index $index" -ForegroundColor Red
+                Write-Host "✗ Failed to mount index ${index}" -ForegroundColor Red
                 $failCount++
                 continue
             }
@@ -5667,7 +7294,7 @@ function Set-ProductKeyForAllIndexes {
             Write-Host "Selected Key: $($selectedMatch.Key) ($($selectedMatch.Type): $($selectedMatch.EditionName))" -ForegroundColor Green
             
             Write-Host "Setting product key..." -ForegroundColor Yellow
-            $Global:CurrentOperation = "Setting Product Key for Index $index"
+            $Global:CurrentOperation = "Setting Product Key for Index ${index}"
             dism /Image:$Global:MountPath /Set-ProductKey:$($selectedMatch.Key)
             
             $keySetSuccess = $false
@@ -5679,23 +7306,23 @@ function Set-ProductKeyForAllIndexes {
             }
             
             Write-Host "Committing changes and unmounting..." -ForegroundColor Yellow
-            $Global:CurrentOperation = "Unmounting Index $index"
+            $Global:CurrentOperation = "Unmounting Index ${index}"
             dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
             
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "✓ Changes committed successfully for index $index" -ForegroundColor Green
+                Write-Host "✓ Changes committed successfully for index ${index}" -ForegroundColor Green
                 if ($keySetSuccess) {
                     $successCount++
                 } else {
                     $failCount++
                 }
             } else {
-                Write-Host "✗ Failed to commit changes for index $index" -ForegroundColor Red
+                Write-Host "✗ Failed to commit changes for index ${index}" -ForegroundColor Red
                 $failCount++
             }
             
         } catch {
-            Write-Host "✗ ERROR processing index $index : $($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "✗ ERROR processing index ${index} : $($_.Exception.Message)" -ForegroundColor Red
             
             Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
             try {
@@ -5711,7 +7338,7 @@ function Set-ProductKeyForAllIndexes {
     $Global:CleanupRequired = $false
     
     Write-Host "`nSummary:" -ForegroundColor Cyan
-    Write-Host "Successfully processed: $successCount indexes" -ForegroundColor Green
+    Write-Host "Successfully processed: ${successCount} indexes" -ForegroundColor Green
     if ($skipCount -gt 0) {
         Write-Host "Skipped (no exact match): $skipCount indexes" -ForegroundColor Yellow
     }
@@ -5820,12 +7447,12 @@ function Set-ProductKeyForSpecificIndex {
     $Global:CleanupRequired = $true
     
     try {
-        Write-Host "`nMounting WIM/ESD index $IndexNumber..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${IndexNumber}..." -ForegroundColor Yellow
         $Global:CurrentOperation = "Mounting"
         dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$IndexNumber /MountDir:$Global:MountPath /CheckIntegrity
         
         if ($LASTEXITCODE -ne 0) {
-            throw "Failed to mount WIM/ESD index $IndexNumber"
+            throw "Failed to mount WIM/ESD index ${IndexNumber}"
         }
         
         # If no product key provided, detect edition and get recommendations (for single index mode)
@@ -5835,7 +7462,7 @@ function Set-ProductKeyForSpecificIndex {
             
             Write-Host "`nDetected Edition Information:" -ForegroundColor Cyan
             Write-Host "=============================" -ForegroundColor Cyan
-            Write-Host "Index: $IndexNumber" -ForegroundColor Gray
+            Write-Host "Index: ${IndexNumber}" -ForegroundColor Gray
             Write-Host "Name: $($editionInfo.Name)" -ForegroundColor Yellow
             Write-Host "Description: $($editionInfo.Description)" -ForegroundColor Gray
             Write-Host "Edition: $($editionInfo.Edition)" -ForegroundColor Yellow
@@ -6017,13 +7644,13 @@ function Set-ProductKeyForSpecificIndex {
         dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
         
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ Changes committed successfully for index $IndexNumber" -ForegroundColor Green
+            Write-Host "✓ Changes committed successfully for index ${IndexNumber}" -ForegroundColor Green
         } else {
-            throw "Failed to commit changes for index $IndexNumber"
+            throw "Failed to commit changes for index ${IndexNumber}"
         }
         
     } catch {
-        Write-Host "ERROR: Failed to set product key for index $IndexNumber - $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "ERROR: Failed to set product key for index ${IndexNumber} - $($_.Exception.Message)" -ForegroundColor Red
         
         Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
         try {
@@ -6457,7 +8084,7 @@ function Add-AppxPackages {
             }
         } while ($true)
     } else {
-        Write-Host "Using saved APPX package path: $appxPackagePath" -ForegroundColor Green
+        Write-Host "Using saved APPX package path: ${appxPackagePath}" -ForegroundColor Green
         $useExisting = Read-Host "Use this path? (Y/n)"
         if ($useExisting.ToLower() -eq 'n') {
             do {
@@ -6473,7 +8100,7 @@ function Add-AppxPackages {
         }
     }
     
-    Write-Host "`nScanning for APPX/APPXBUNDLE packages in: $appxPackagePath" -ForegroundColor Yellow
+    Write-Host "`nScanning for APPX/APPXBUNDLE packages in: ${appxPackagePath}" -ForegroundColor Yellow
     $appxFiles = Get-ChildItem -Path $appxPackagePath -Filter "*.appx" -Recurse -ErrorAction SilentlyContinue
     $appxbundleFiles = Get-ChildItem -Path $appxPackagePath -Filter "*.appxbundle" -Recurse -ErrorAction SilentlyContinue
     
@@ -6488,7 +8115,7 @@ function Add-AppxPackages {
     $packages = $packages | Where-Object { $_ -and $_.Trim() }
     
     if ($packages.Count -eq 0) {
-        Write-Host "No .appx or .appxbundle files found in: $appxPackagePath" -ForegroundColor Red
+        Write-Host "No .appx or .appxbundle files found in: ${appxPackagePath}" -ForegroundColor Red
         Read-Host "`nPress Enter to continue"
         return
     }
@@ -6682,7 +8309,7 @@ function Update-ExportedIndexMetadata {
         }
         
         if ($indexNumber) {
-            Write-Host "  Updating metadata for index $indexNumber..." -ForegroundColor Cyan
+            Write-Host "  Updating metadata for index ${indexNumber}..." -ForegroundColor Cyan
             
             # Build command for updating name, description, and display properties
             $args = @("info", $Global:InstallWimPath, $indexNumber, $NewName, $NewDescription)
@@ -6769,7 +8396,7 @@ function Mount-IndexOnly {
     
     # Validate the index number
     if ($availableIndexes -notcontains $indexNumber) {
-        Write-Host "Invalid index number: $indexNumber" -ForegroundColor Red
+        Write-Host "Invalid index number: ${indexNumber}" -ForegroundColor Red
         Write-Host "Available indexes: $($availableIndexes -join ', ')" -ForegroundColor Yellow
         Read-Host "Press Enter to continue"
         return
@@ -6803,11 +8430,11 @@ function Mount-IndexOnly {
         }
     }
     
-    $Global:CurrentOperation = "Mounting Index $indexNumber"
+    $Global:CurrentOperation = "Mounting Index ${indexNumber}"
     $Global:CleanupRequired = $true
     
     try {
-        Write-Host "`nMounting WIM/ESD index $indexNumber..." -ForegroundColor Yellow
+        Write-Host "`nMounting WIM/ESD index ${indexNumber}..." -ForegroundColor Yellow
         Write-Host "Source: $Global:InstallWimPath" -ForegroundColor Gray
         Write-Host "Mount Point: $Global:MountPath" -ForegroundColor Gray
         Write-Host "Mode: $(if ($readOnly) { "Read-Only" } else { "Read-Write" })" -ForegroundColor Gray
@@ -6820,11 +8447,11 @@ function Mount-IndexOnly {
         }
         
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "`n✓ SUCCESS: Index $indexNumber mounted successfully!" -ForegroundColor Green
+            Write-Host "`n✓ SUCCESS: Index ${indexNumber} mounted successfully!" -ForegroundColor Green
             Write-Host ""
             Write-Host "Mount Details:" -ForegroundColor Cyan
             Write-Host "==============" -ForegroundColor Cyan
-            Write-Host "Index: $indexNumber" -ForegroundColor Yellow
+            Write-Host "Index: ${indexNumber}" -ForegroundColor Yellow
             Write-Host "Mount Path: $Global:MountPath" -ForegroundColor Yellow
             Write-Host "Access Mode: $(if ($readOnly) { "Read-Only" } else { "Read-Write" })" -ForegroundColor Yellow
             Write-Host ""
@@ -6850,11 +8477,11 @@ function Mount-IndexOnly {
             $Global:CleanupRequired = $true
             
         } else {
-            throw "Failed to mount WIM/ESD index $indexNumber (Exit code: $LASTEXITCODE)"
+            throw "Failed to mount WIM/ESD index ${indexNumber} (Exit code: $LASTEXITCODE)"
         }
         
     } catch {
-        Write-Host "`nERROR: Failed to mount index $indexNumber - $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "`nERROR: Failed to mount index ${indexNumber} - $($_.Exception.Message)" -ForegroundColor Red
         $Global:CurrentOperation = "None"
         $Global:CleanupRequired = $false
     }
@@ -6886,102 +8513,1058 @@ function Get-OSCDImgPath {
    return $null
 }
 
-function Main {
-   if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-       Write-Host "This script requires administrator privileges. Please run PowerShell as administrator." -ForegroundColor Red
-       exit 1
-   }
+function Manage-Registry {
+    if (-not (Test-RequiredPaths)) {
+        Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    if (-not (Test-MountPathEmpty)) {
+        Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+        Read-Host "Press Enter to continue"
+        return
+    }
+    
+    do {
+        Clear-Host
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "       Registry Management" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host ""
+        
+        Write-Host "CURRENT CONFIGURATION:" -ForegroundColor Magenta
+        Write-Host "Install Image Path: " -NoNewline
+        Write-Host $Global:InstallWimPath -ForegroundColor Green
+        Write-Host "Mount Path: " -NoNewline
+        Write-Host "$Global:MountPath (Ready)" -ForegroundColor Green
+        if ($Global:BackupPath) {
+            Write-Host "Backup Path: " -NoNewline
+            Write-Host $Global:BackupPath -ForegroundColor Green
+        }
+        Write-Host ""
+        
+        Write-Host "REGISTRY OPERATIONS:" -ForegroundColor Cyan
+        Write-Host "1. Apply Common Tweaks" -ForegroundColor Green
+        Write-Host "2. Return to Main Menu" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Select an option (1-2): " -NoNewline -ForegroundColor White
+        
+        $choice = Read-Host
+        
+        switch ($choice) {
+            "1" { Apply-CommonTweaks }
+            "2" { return }
+            default {
+                Write-Host "Invalid selection." -ForegroundColor Red
+                Start-Sleep -Seconds 2
+            }
+        }
+    } while ($true)
+}
 
-   do {
-       Show-Menu
-       $choice = Read-Host
-       
-       switch ($choice) {
-           "1" { Manage-Configuration }
-           "2" { Manage-Drivers }
-           "3" { 
-               if (-not (Test-RequiredPaths)) {
-                   Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } elseif (-not (Test-MountPathEmpty)) {
-                   Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } else {
-                   Manage-PackagesAndFeatures
-               }
-           }
-           "4" { 
-               if (-not (Test-RequiredPaths)) {
-                   Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } elseif (-not (Test-MountPathEmpty)) {
-                   Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } else {
-                   Manage-Indexes
-               }
-           }
-           "5" { 
-               if (-not (Test-RequiredPaths)) {
-                   Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } elseif (-not (Test-MountPathEmpty)) {
-                   Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } else {
-                   Manage-Editions
-               }
-           }
-           "6" { 
-               if (-not (Test-RequiredPaths)) {
-                   Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } elseif (-not (Test-MountPathEmpty)) {
-                   Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } else {
-                   Manage-Conversions
-               }
-           }
-           "7" { 
-               if (-not (Test-RequiredPaths)) {
-                   Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } else {
-                   Manage-ISOCreation
-               }
-           }
-           "8" { 
-               if (-not (Test-RequiredPaths)) {
-                   Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } else {
-                   Get-WimInfo
-               }
-           }
-           "9" { 
-               if (-not (Test-RequiredPaths)) {
-                   Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } elseif (-not (Test-MountPathEmpty)) {
-                   Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
-                   Read-Host "Press Enter to continue"
-               } else {
-                   Mount-IndexOnly
-               }
-           }
-           "10" { Invoke-ManualCleanup }
-           "11" { 
-               Write-Host "Exiting..." -ForegroundColor Yellow
-               Invoke-Cleanup
-               exit 
-           }
-           default { 
-               Write-Host "Invalid selection. Please try again." -ForegroundColor Red
-               Start-Sleep -Seconds 1
-           }
-       }
-   } while ($true)
+function Apply-CommonTweaks {
+    # Track which tweaks are selected
+    $tweakStates = @{
+        "DisableSearchIndexing" = $false
+        "DisableTelemetry" = $false
+        "ClassicContextMenu" = $false
+        "DisableAutoRun" = $false
+        "EnableLongPaths" = $false
+        "BypassTPM" = $false
+        "BypassRAM" = $false
+        "BypassSecureBoot" = $false
+        "BypassCPU" = $false
+        "DisableMSAccount" = $false
+        "DisableWeakSSLTLS" = $false
+        "EnableSMBSigning" = $false
+        "DisableIE11" = $false
+        "EnableCertPaddingCheck" = $false
+        "RestrictNetworkLocation" = $false
+        "PreventDeviceEncryption" = $false
+        "EnableADRecoveryBackup" = $false
+    }
+    
+    # Selection interface
+    do {
+        Clear-Host
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "      Apply Common Tweaks" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host ""
+        
+        Write-Host "Select tweaks to apply:" -ForegroundColor Yellow
+        Write-Host ""
+        
+        # Display all tweaks with current state
+        Write-Host "1. $(if ($tweakStates.DisableSearchIndexing) { '✓' } else { '✗' }) Disable Windows Search Indexing" -ForegroundColor $(if ($tweakStates.DisableSearchIndexing) { "Green" } else { "Red" })
+        Write-Host "2. $(if ($tweakStates.DisableTelemetry) { '✓' } else { '✗' }) Disable Telemetry/Data Collection" -ForegroundColor $(if ($tweakStates.DisableTelemetry) { "Green" } else { "Red" })
+        Write-Host "3. $(if ($tweakStates.ClassicContextMenu) { '✓' } else { '✗' }) Classic Context Menu (Windows 11)" -ForegroundColor $(if ($tweakStates.ClassicContextMenu) { "Green" } else { "Red" })
+        Write-Host "4. $(if ($tweakStates.DisableAutoRun) { '✓' } else { '✗' }) Disable AutoRun/AutoPlay" -ForegroundColor $(if ($tweakStates.DisableAutoRun) { "Green" } else { "Red" })
+        Write-Host "5. $(if ($tweakStates.EnableLongPaths) { '✓' } else { '✗' }) Enable Win32 Long Paths" -ForegroundColor $(if ($tweakStates.EnableLongPaths) { "Green" } else { "Red" })
+        Write-Host "6. $(if ($tweakStates.BypassTPM) { '✓' } else { '✗' }) Bypass TPM Requirement" -ForegroundColor $(if ($tweakStates.BypassTPM) { "Green" } else { "Red" })
+        Write-Host "7. $(if ($tweakStates.BypassRAM) { '✓' } else { '✗' }) Bypass RAM Requirement" -ForegroundColor $(if ($tweakStates.BypassRAM) { "Green" } else { "Red" })
+        Write-Host "8. $(if ($tweakStates.BypassSecureBoot) { '✓' } else { '✗' }) Bypass Secure Boot Requirement" -ForegroundColor $(if ($tweakStates.BypassSecureBoot) { "Green" } else { "Red" })
+        Write-Host "9. $(if ($tweakStates.BypassCPU) { '✓' } else { '✗' }) Bypass CPU Requirement" -ForegroundColor $(if ($tweakStates.BypassCPU) { "Green" } else { "Red" })
+        Write-Host "10. $(if ($tweakStates.DisableMSAccount) { '✓' } else { '✗' }) Disable Microsoft Account Requirement" -ForegroundColor $(if ($tweakStates.DisableMSAccount) { "Green" } else { "Red" })
+        Write-Host "11. $(if ($tweakStates.DisableWeakSSLTLS) { '✓' } else { '✗' }) Disable Weak SSL/TLS Protocols" -ForegroundColor $(if ($tweakStates.DisableWeakSSLTLS) { "Green" } else { "Red" })
+        Write-Host "12. $(if ($tweakStates.EnableSMBSigning) { '✓' } else { '✗' }) Enable SMB Security Signing" -ForegroundColor $(if ($tweakStates.EnableSMBSigning) { "Green" } else { "Red" })
+        Write-Host "13. $(if ($tweakStates.DisableIE11) { '✓' } else { '✗' }) Disable Internet Explorer 11" -ForegroundColor $(if ($tweakStates.DisableIE11) { "Green" } else { "Red" })
+        Write-Host "14. $(if ($tweakStates.EnableCertPaddingCheck) { '✓' } else { '✗' }) Enable Certificate Padding Check" -ForegroundColor $(if ($tweakStates.EnableCertPaddingCheck) { "Green" } else { "Red" })
+        Write-Host "15. $(if ($tweakStates.RestrictNetworkLocation) { '✓' } else { '✗' }) Restrict Network Location Changes" -ForegroundColor $(if ($tweakStates.RestrictNetworkLocation) { "Green" } else { "Red" })
+        Write-Host "16. $(if ($tweakStates.PreventDeviceEncryption) { '✓' } else { '✗' }) Enable Prevent Device Encryption (Disable BitLocker)" -ForegroundColor $(if ($tweakStates.PreventDeviceEncryption) { "Green" } else { "Red" })
+        Write-Host "17. $(if ($tweakStates.EnableADRecoveryBackup) { '✓' } else { '✗' }) Enable AD Recovery Key Backup" -ForegroundColor $(if ($tweakStates.EnableADRecoveryBackup) { "Green" } else { "Red" })
+        Write-Host ""
+        
+        $selectedCount = 0
+        foreach ($value in $tweakStates.Values) {
+            if ($value -eq $true) {
+                $selectedCount++
+            }
+        }
+        
+        $toggleAllStatus = if ($selectedCount -eq 0) { "All Disabled" } elseif ($selectedCount -eq $tweakStates.Count) { "All Enabled" } else { "Mixed ($selectedCount selected)" }
+        
+        Write-Host "18. Toggle All (Currently: $toggleAllStatus)" -ForegroundColor Magenta
+        Write-Host "19. Apply Selected Tweaks ($selectedCount selected)" -ForegroundColor $(if ($selectedCount -gt 0) { "Green" } else { "DarkGray" })
+        Write-Host "20. Return to Registry Management" -ForegroundColor Red
+        Write-Host ""
+        Write-Host "Select option (1-20): " -NoNewline -ForegroundColor White
+        
+        $choice = Read-Host
+        
+        switch ($choice) {
+            "1" { $tweakStates.DisableSearchIndexing = -not $tweakStates.DisableSearchIndexing }
+            "2" { $tweakStates.DisableTelemetry = -not $tweakStates.DisableTelemetry }
+            "3" { $tweakStates.ClassicContextMenu = -not $tweakStates.ClassicContextMenu }
+            "4" { $tweakStates.DisableAutoRun = -not $tweakStates.DisableAutoRun }
+            "5" { $tweakStates.EnableLongPaths = -not $tweakStates.EnableLongPaths }
+            "6" { $tweakStates.BypassTPM = -not $tweakStates.BypassTPM }
+            "7" { $tweakStates.BypassRAM = -not $tweakStates.BypassRAM }
+            "8" { $tweakStates.BypassSecureBoot = -not $tweakStates.BypassSecureBoot }
+            "9" { $tweakStates.BypassCPU = -not $tweakStates.BypassCPU }
+            "10" { $tweakStates.DisableMSAccount = -not $tweakStates.DisableMSAccount }
+            "11" { $tweakStates.DisableWeakSSLTLS = -not $tweakStates.DisableWeakSSLTLS }
+            "12" { $tweakStates.EnableSMBSigning = -not $tweakStates.EnableSMBSigning }
+            "13" { $tweakStates.DisableIE11 = -not $tweakStates.DisableIE11 }
+            "14" { $tweakStates.EnableCertPaddingCheck = -not $tweakStates.EnableCertPaddingCheck }
+            "15" { $tweakStates.RestrictNetworkLocation = -not $tweakStates.RestrictNetworkLocation }
+            "16" { $tweakStates.PreventDeviceEncryption = -not $tweakStates.PreventDeviceEncryption }
+            "17" { $tweakStates.EnableADRecoveryBackup = -not $tweakStates.EnableADRecoveryBackup }
+            "18" { 
+                # Explicit toggle all logic
+                if ($selectedCount -eq $tweakStates.Count) {
+                    # All are enabled, so disable all
+                    $tweakStates.DisableSearchIndexing = $false
+                    $tweakStates.DisableTelemetry = $false
+                    $tweakStates.ClassicContextMenu = $false
+                    $tweakStates.DisableAutoRun = $false
+                    $tweakStates.EnableLongPaths = $false
+                    $tweakStates.BypassTPM = $false
+                    $tweakStates.BypassRAM = $false
+                    $tweakStates.BypassSecureBoot = $false
+                    $tweakStates.BypassCPU = $false
+                    $tweakStates.DisableMSAccount = $false
+                    $tweakStates.DisableWeakSSLTLS = $false
+                    $tweakStates.EnableSMBSigning = $false
+                    $tweakStates.DisableIE11 = $false
+                    $tweakStates.EnableCertPaddingCheck = $false
+                    $tweakStates.RestrictNetworkLocation = $false
+                    $tweakStates.PreventDeviceEncryption = $false
+                    $tweakStates.EnableADRecoveryBackup = $false
+                } else {
+                    # Not all are enabled, so enable all
+                    $tweakStates.DisableSearchIndexing = $true
+                    $tweakStates.DisableTelemetry = $true
+                    $tweakStates.ClassicContextMenu = $true
+                    $tweakStates.DisableAutoRun = $true
+                    $tweakStates.EnableLongPaths = $true
+                    $tweakStates.BypassTPM = $true
+                    $tweakStates.BypassRAM = $true
+                    $tweakStates.BypassSecureBoot = $true
+                    $tweakStates.BypassCPU = $true
+                    $tweakStates.DisableMSAccount = $true
+                    $tweakStates.DisableWeakSSLTLS = $true
+                    $tweakStates.EnableSMBSigning = $true
+                    $tweakStates.DisableIE11 = $true
+                    $tweakStates.EnableCertPaddingCheck = $true
+                    $tweakStates.RestrictNetworkLocation = $true
+                    $tweakStates.PreventDeviceEncryption = $true
+                    $tweakStates.EnableADRecoveryBackup = $true
+                }
+            }
+            "19" { 
+                if ($selectedCount -gt 0) {
+                    # Application phase - apply the selected tweaks
+                    Write-Host "`nRegistry Tweaks Options:" -ForegroundColor Cyan
+                    Write-Host "1. Apply to current system (live)" -ForegroundColor Yellow
+                    Write-Host "2. Apply to specific index" -ForegroundColor Yellow
+                    Write-Host "3. Apply to all indexes" -ForegroundColor Yellow
+                    Write-Host "4. Cancel" -ForegroundColor Red
+                    Write-Host ""
+                    Write-Host "Select option (1-4): " -NoNewline -ForegroundColor White
+                    $applyChoice = Read-Host
+                    
+                    $Global:CurrentOperation = "Applying Registry Tweaks"
+                    $Global:CleanupRequired = $true
+                    
+                    try {
+                        if ($applyChoice -eq "1") {
+                            Write-Host "`nApplying tweaks to current live system..." -ForegroundColor Cyan
+                            Write-Host "⚠ WARNING: This will modify your current Windows installation!" -ForegroundColor Red
+                            $confirm = Read-Host "Are you sure you want to proceed? (Y/n)"
+                            if ($confirm.ToLower() -ne 'n') {
+                                $result = Apply-TweaksToCurrentSystem -TweakStates $tweakStates
+                                Write-Host "`nTweaks application completed: $($result.Success) successful, $($result.Failed) failed" -ForegroundColor Cyan
+                                if ($result.RequiresReboot) {
+                                    Write-Host "⚠ Some changes require a system reboot to take effect." -ForegroundColor Yellow
+                                }
+                            } else {
+                                Write-Host "Operation cancelled." -ForegroundColor Yellow
+                            }
+                        }
+                        elseif ($applyChoice -eq "2") {
+                            Write-Host "`nAvailable indexes in WIM/ESD:" -ForegroundColor Cyan
+                            try {
+                                dism /Get-WimInfo /WimFile:$Global:InstallWimPath
+                                if ($LASTEXITCODE -ne 0) {
+                                    Write-Host "Error getting WIM/ESD information." -ForegroundColor Red
+                                    Read-Host "Press Enter to continue"
+                                    continue
+                                }
+                            } catch {
+                                Write-Host "Error getting WIM/ESD information: $($_.Exception.Message)" -ForegroundColor Red
+                                Read-Host "Press Enter to continue"
+                                continue
+                            }
+                            
+                            $indexNumber = Read-Host "`nEnter the index number"
+                            
+                            # Mount, apply tweaks, and unmount for single index
+                            Write-Host "`nMounting WIM/ESD index ${indexNumber}..." -ForegroundColor Yellow
+                            dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$indexNumber /MountDir:$Global:MountPath /CheckIntegrity
+                            
+                            if ($LASTEXITCODE -ne 0) {
+                                throw "Failed to mount WIM/ESD index ${indexNumber}"
+                            }
+                            
+                            # Apply tweaks to mounted index
+                            $results = Apply-TweaksToMountedImage -IndexNumber $indexNumber -TweakStates $tweakStates
+                            
+                            Write-Host "Committing changes and unmounting..." -ForegroundColor Yellow
+                            dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
+                            
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-Host "✓ Changes committed successfully for index ${indexNumber}" -ForegroundColor Green
+                                Write-Host "Applied $($results.Success) tweaks successfully, $($results.Failed) failed" -ForegroundColor Cyan
+                            } else {
+                                throw "Failed to commit changes for index ${indexNumber}"
+                            }
+                            
+                        } elseif ($applyChoice -eq "3") {
+                            $indexes = Get-WimIndexes
+                            if ($indexes.Count -eq 0) {
+                                Write-Host "No indexes found in the image." -ForegroundColor Red
+                                Read-Host "Press Enter to continue"
+                                continue
+                            }
+                            
+                            Write-Host "`nThis will apply tweaks to ALL indexes ($($indexes.Count) found)." -ForegroundColor Yellow
+                            $proceed = Read-Host "Proceed with applying tweaks to all indexes? (Y/n)"
+                            if ($proceed.ToLower() -eq 'n') {
+                                continue
+                            }
+                            
+                            $totalSuccess = 0
+                            $totalFailed = 0
+                            
+                            foreach ($index in $indexes) {
+                                Write-Host "`n--- Processing Index ${index} ---" -ForegroundColor Magenta
+                                
+                                try {
+                                    Write-Host "Mounting WIM/ESD index ${index}..." -ForegroundColor Yellow
+                                    dism /Mount-Wim /WimFile:$Global:InstallWimPath /Index:$index /MountDir:$Global:MountPath /CheckIntegrity
+                                    
+                                    if ($LASTEXITCODE -ne 0) {
+                                        throw "Failed to mount WIM/ESD index ${index}"
+                                    }
+                                    
+                                    # Apply tweaks to mounted index
+                                    $results = Apply-TweaksToMountedImage -IndexNumber $index -TweakStates $tweakStates
+                                    $totalSuccess += $results.Success
+                                    $totalFailed += $results.Failed
+                                    
+                                    Write-Host "Committing changes and unmounting..." -ForegroundColor Yellow
+                                    dism /Unmount-Wim /MountDir:$Global:MountPath /Commit /CheckIntegrity
+                                    
+                                    if ($LASTEXITCODE -eq 0) {
+                                        Write-Host "✓ Changes committed successfully for index ${index}" -ForegroundColor Green
+                                    } else {
+                                        throw "Failed to commit changes for index ${index}"
+                                    }
+                                    
+                                } catch {
+                                    Write-Host "✗ ERROR processing index ${index} : $($_.Exception.Message)" -ForegroundColor Red
+                                    Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
+                                    try {
+                                        dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                                    } catch {
+                                        Write-Host "Manual cleanup may be required." -ForegroundColor Red
+                                    }
+                                }
+                            }
+                            
+                            Write-Host "`nOverall Results:" -ForegroundColor Cyan
+                            Write-Host "Total tweaks applied successfully: $totalSuccess" -ForegroundColor Green
+                            if ($totalFailed -gt 0) {
+                                Write-Host "Total tweaks failed: $totalFailed" -ForegroundColor Red
+                            }
+                        } elseif ($applyChoice -eq "4") {
+                            Write-Host "Operation cancelled." -ForegroundColor Yellow
+                        } else {
+                            Write-Host "Invalid selection." -ForegroundColor Red
+                        }
+                        
+                        Read-Host "Press Enter to continue"
+                        
+                    } catch {
+                        Write-Host "Error during tweak application: $($_.Exception.Message)" -ForegroundColor Red
+                        Write-Host "Attempting to discard changes and unmount..." -ForegroundColor Yellow
+                        try {
+                            dism /Unmount-Wim /MountDir:$Global:MountPath /Discard /CheckIntegrity
+                        } catch {
+                            Write-Host "Manual cleanup may be required." -ForegroundColor Red
+                        }
+                        Read-Host "Press Enter to continue"
+                    } finally {
+                        $Global:CurrentOperation = "None"
+                        $Global:CleanupRequired = $false
+                    }
+                } else {
+                    Write-Host "No tweaks selected." -ForegroundColor Yellow
+                    Start-Sleep -Seconds 2
+                }
+            }
+            "20" { return }
+            default {
+                Write-Host "Invalid selection." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+    } while ($true)
+}
+
+function Apply-TweaksToMountedImage {
+    param(
+        [string]$IndexNumber,
+        [hashtable]$TweakStates
+    )
+    
+    Write-Host "Applying selected tweaks to index ${IndexNumber}..." -ForegroundColor Yellow
+    
+    $successCount = 0
+    $failCount = 0
+    
+    # Registry hive paths
+    $softwareHive = "$Global:MountPath\Windows\System32\config\SOFTWARE"
+    $systemHive = "$Global:MountPath\Windows\System32\config\SYSTEM"
+    $defaultUserHive = "$Global:MountPath\Users\Default\NTUSER.DAT"
+    
+    $hivesLoaded = @{}
+    
+    try {
+        # Load registry hives
+        if (Test-Path $softwareHive) {
+            $tempSoftware = "TEMP_SOFTWARE_$IndexNumber"
+            $loadResult = reg load "HKLM\$tempSoftware" $softwareHive 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $hivesLoaded[$tempSoftware] = $true
+                $softwareLoaded = $true
+            } else {
+                Write-Host "⚠ Failed to load SOFTWARE hive" -ForegroundColor Yellow
+                $softwareLoaded = $false
+            }
+        } else {
+            $softwareLoaded = $false
+        }
+        
+        if (Test-Path $systemHive) {
+            $tempSystem = "TEMP_SYSTEM_$IndexNumber"
+            $loadResult = reg load "HKLM\$tempSystem" $systemHive 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $hivesLoaded[$tempSystem] = $true
+                $systemLoaded = $true
+            } else {
+                Write-Host "⚠ Failed to load SYSTEM hive" -ForegroundColor Yellow
+                $systemLoaded = $false
+            }
+        } else {
+            $systemLoaded = $false
+        }
+        
+        if (Test-Path $defaultUserHive) {
+            $tempNTUser = "TEMP_NTUSER_$IndexNumber"
+            $loadResult = reg load "HKLM\$tempNTUser" $defaultUserHive 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $hivesLoaded[$tempNTUser] = $true
+                $defaultUserLoaded = $true
+            } else {
+                Write-Host "⚠ Failed to load NTUSER hive" -ForegroundColor Yellow
+                $defaultUserLoaded = $false
+            }
+        } else {
+            $defaultUserLoaded = $false
+        }
+        
+        # Apply tweaks based on selection
+        if ($TweakStates.DisableSearchIndexing -and $systemLoaded) {
+            Write-Host "Applying: Disable Windows Search Indexing..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\ControlSet001\Services\WSearch" /v "Start" /t REG_DWORD /d 4 /f 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✓ Windows Search Indexing disabled" -ForegroundColor Green
+                    $successCount++
+                } else {
+                    throw "Registry operation failed"
+                }
+            } catch {
+                Write-Host "✗ Failed to disable search indexing" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.DisableTelemetry -and $softwareLoaded) {
+            Write-Host "Applying: Disable Telemetry/Data Collection..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Policies\Microsoft\Windows\DataCollection" /v "AllowTelemetry" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Microsoft\Windows\CurrentVersion\Policies\DataCollection" /v "AllowTelemetry" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Policies\Microsoft\Windows\AppCompat" /v "AITEnable" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Policies\Microsoft\Windows\AppCompat" /v "DisableInventory" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ Telemetry/Data Collection disabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to disable telemetry" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.ClassicContextMenu -and $defaultUserLoaded) {
+            Write-Host "Applying: Classic Context Menu (Windows 11)..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_NTUSER_$IndexNumber\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f 2>&1 | Out-Null
+                Write-Host "✓ Classic Context Menu enabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable classic context menu" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.DisableAutoRun -and $softwareLoaded) {
+            Write-Host "Applying: Disable AutoRun/AutoPlay..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v "NoDriveTypeAutoRun" /t REG_DWORD /d 255 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v "NoAutorun" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ AutoRun/AutoPlay disabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to disable AutoRun/AutoPlay" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.EnableLongPaths -and $softwareLoaded) {
+            Write-Host "Applying: Enable Win32 Long Paths..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Microsoft\Windows\CurrentVersion\Policies\System" /v "EnableLongPathsWin32" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ Win32 Long Paths enabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable long paths" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.BypassTPM -and $systemLoaded) {
+            Write-Host "Applying: Bypass TPM Requirement..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\Setup\LabConfig" /v "BypassTPMCheck" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ TPM Requirement bypassed" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to bypass TPM requirement" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.BypassRAM -and $systemLoaded) {
+            Write-Host "Applying: Bypass RAM Requirement..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\Setup\LabConfig" /v "BypassRAMCheck" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ RAM Requirement bypassed" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to bypass RAM requirement" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.BypassSecureBoot -and $systemLoaded) {
+            Write-Host "Applying: Bypass Secure Boot Requirement..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\Setup\LabConfig" /v "BypassSecureBootCheck" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ Secure Boot Requirement bypassed" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to bypass Secure Boot requirement" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.BypassCPU -and $systemLoaded) {
+            Write-Host "Applying: Bypass CPU Requirement..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\Setup\LabConfig" /v "BypassCPUCheck" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ CPU Requirement bypassed" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to bypass CPU requirement" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.DisableMSAccount -and $softwareLoaded) {
+            Write-Host "Applying: Disable Microsoft Account Requirement..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Microsoft\Windows\CurrentVersion\OOBE" /v "BypassNRO" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Microsoft\PolicyManager\current\device\Accounts" /v "AllowMicrosoftAccountSignInAssistant" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                Write-Host "✓ Microsoft Account Requirement disabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to disable Microsoft Account requirement" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.DisableWeakSSLTLS -and $systemLoaded) {
+            Write-Host "Applying: Disable Weak SSL/TLS Protocols..." -ForegroundColor Cyan
+            try {
+                
+                # Create parent protocol keys first
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2" /f 2>&1 | Out-Null
+                
+                # Disable SSL 2.0
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Client" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Client" /v "DisabledByDefault" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Server" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                
+                # Disable SSL 3.0
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0\Client" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0\Server" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                
+                # Disable TLS 1.0
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Client" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                
+                # Disable TLS 1.1
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Client" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Client" /v "DisabledByDefault" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server" /v "DisabledByDefault" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                # Enable TLS 1.2 (ensure it's enabled)
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client" /v "Enabled" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client" /v "DisabledByDefault" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server" /v "Enabled" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server" /v "DisabledByDefault" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                
+                Write-Host "✓ Weak SSL/TLS Protocols disabled, TLS 1.2 enabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to configure SSL/TLS protocols" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.EnableSMBSigning -and $systemLoaded) {
+            Write-Host "Applying: Enable SMB Security Signing..." -ForegroundColor Cyan
+            try {
+                # Enable SMB client signing
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Services\LanManWorkstation\Parameters" /v "RequireSecuritySignature" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                # Enable SMB server signing
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Services\LanManServer\Parameters" /v "RequireSecuritySignature" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                Write-Host "✓ SMB Security Signing enabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable SMB security signing" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.DisableIE11 -and $softwareLoaded) {
+            Write-Host "Applying: Disable Internet Explorer 11..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Microsoft\Internet Explorer\Setup\11.0" /v "DoNotAllowIE11" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ Internet Explorer 11 disabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to disable Internet Explorer 11" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.EnableCertPaddingCheck -and $softwareLoaded) {
+            Write-Host "Applying: Enable Certificate Padding Check..." -ForegroundColor Cyan
+            try {
+                # Enable for 64-bit
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Microsoft\Cryptography\Wintrust\Config" /v "EnableCertPaddingCheck" /t REG_SZ /d "1" /f 2>&1 | Out-Null
+                
+                # Enable for 32-bit on 64-bit systems
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Wow6432Node\Microsoft\Cryptography\Wintrust\Config" /v "EnableCertPaddingCheck" /t REG_SZ /d "1" /f 2>&1 | Out-Null
+                
+                Write-Host "✓ Certificate Padding Check enabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable certificate padding check" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.RestrictNetworkLocation -and $softwareLoaded) {
+            Write-Host "Applying: Restrict Network Location Changes..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Policies\Microsoft\Windows\Network Connections" /v "NC_StdDomainUserSetLocation" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ Network Location Changes restricted" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to restrict network location changes" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.PreventDeviceEncryption -and $systemLoaded) {
+            Write-Host "Applying: Enable Prevent Device Encryption (Disable BitLocker)..." -ForegroundColor Cyan
+            try {
+                # Microsoft's recommended method to prevent automatic device encryption
+                reg add "HKLM\TEMP_SYSTEM_$IndexNumber\CurrentControlSet\Control\BitLocker" /v "PreventDeviceEncryption" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                Write-Host "✓ Device Encryption Prevention enabled (BitLocker auto-start disabled)" -ForegroundColor Green
+                Write-Host "  Note: Not recommended on devices with Windows Recall feature" -ForegroundColor Yellow
+                Write-Host "  Note: Ensure compliance with Windows 11 licensing requirements" -ForegroundColor Yellow
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable device encryption prevention" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.EnableADRecoveryBackup -and $softwareLoaded) {
+            Write-Host "Applying: Enable AD Recovery Key Backup..." -ForegroundColor Cyan
+            try {
+                # Enable Active Directory backup of BitLocker recovery keys
+                reg add "HKLM\TEMP_SOFTWARE_$IndexNumber\Policies\Microsoft\FVE" /v "OSRequireActiveDirectoryBackup" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                Write-Host "✓ AD Recovery Key Backup enabled" -ForegroundColor Green
+                Write-Host "  Note: Requires proper Active Directory configuration" -ForegroundColor Yellow
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable AD recovery key backup" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+    } finally {
+        # Unload all loaded hives
+        foreach ($tempName in $hivesLoaded.Keys) {
+            try {
+                reg unload "HKLM\$tempName" 2>&1 | Out-Null
+            } catch {}
+        }
+    }
+    
+    Write-Host "Tweaks application completed for index ${IndexNumber}: $successCount successful, $failCount failed" -ForegroundColor Cyan
+    
+    return @{
+        Success = $successCount
+        Failed = $failCount
+    }
+}
+
+function Apply-TweaksToCurrentSystem {
+    param(
+        [hashtable]$TweakStates
+    )
+    
+    Write-Host "Applying selected tweaks to current system..." -ForegroundColor Yellow
+    
+    $successCount = 0
+    $failCount = 0
+    $requiresReboot = $false
+    
+    try {
+        # Apply tweaks based on selection to live registry
+        if ($TweakStates.DisableSearchIndexing) {
+            Write-Host "Applying: Disable Windows Search Indexing..." -ForegroundColor Cyan
+            try {
+                # Stop Windows Search service first
+                Stop-Service -Name "WSearch" -Force -ErrorAction SilentlyContinue
+                reg add "HKLM\SYSTEM\CurrentControlSet\Services\WSearch" /v "Start" /t REG_DWORD /d 4 /f 2>&1 | Out-Null
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "✓ Windows Search Indexing disabled" -ForegroundColor Green
+                    $successCount++
+                    $requiresReboot = $true
+                } else {
+                    throw "Registry operation failed"
+                }
+            } catch {
+                Write-Host "✗ Failed to disable search indexing: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.DisableTelemetry) {
+            Write-Host "Applying: Disable Telemetry/Data Collection..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\DataCollection" /v "AllowTelemetry" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" /v "AllowTelemetry" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat" /v "AITEnable" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\AppCompat" /v "DisableInventory" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ Telemetry/Data Collection disabled" -ForegroundColor Green
+                $successCount++
+                $requiresReboot = $true
+            } catch {
+                Write-Host "✗ Failed to disable telemetry: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.ClassicContextMenu) {
+            Write-Host "Applying: Classic Context Menu (Windows 11)..." -ForegroundColor Cyan
+            try {
+                # Apply to current user
+                reg add "HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f 2>&1 | Out-Null
+                # Apply to default user (for new users)
+                reg add "HKU\.DEFAULT\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" /ve /t REG_SZ /d "" /f 2>&1 | Out-Null
+                Write-Host "✓ Classic Context Menu enabled" -ForegroundColor Green
+                $successCount++
+                Write-Host "  Note: You may need to restart Windows Explorer to see changes" -ForegroundColor Gray
+            } catch {
+                Write-Host "✗ Failed to enable classic context menu: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.DisableAutoRun) {
+            Write-Host "Applying: Disable AutoRun/AutoPlay..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v "NoDriveTypeAutoRun" /t REG_DWORD /d 255 /f 2>&1 | Out-Null
+                reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v "NoAutorun" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" /v "NoDriveTypeAutoRun" /t REG_DWORD /d 255 /f 2>&1 | Out-Null
+                Write-Host "✓ AutoRun/AutoPlay disabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to disable AutoRun/AutoPlay: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.EnableLongPaths) {
+            Write-Host "Applying: Enable Win32 Long Paths..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v "LongPathsEnabled" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ Win32 Long Paths enabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable long paths: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        # Note: Bypass tweaks (TPM, RAM, Secure Boot, CPU) are not applicable to live system
+        if ($TweakStates.BypassTPM -or $TweakStates.BypassRAM -or $TweakStates.BypassSecureBoot -or $TweakStates.BypassCPU) {
+            Write-Host "⚠ Bypass tweaks (TPM/RAM/SecureBoot/CPU) are only applicable to WIM images, not live systems" -ForegroundColor Yellow
+        }
+        
+        # Note: MS Account bypass is not applicable to live system
+        if ($TweakStates.DisableMSAccount) {
+            Write-Host "⚠ Microsoft Account bypass is only applicable to WIM images, not live systems" -ForegroundColor Yellow
+        }
+        
+        if ($TweakStates.DisableWeakSSLTLS) {
+            Write-Host "Applying: Disable Weak SSL/TLS Protocols..." -ForegroundColor Cyan
+            try {
+              
+                # Create parent protocol keys first
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1" /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2" /f 2>&1 | Out-Null
+                
+                # Disable SSL 2.0
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Client" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Client" /v "DisabledByDefault" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 2.0\Server" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                
+                # Disable SSL 3.0
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0\Client" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\SSL 3.0\Server" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                
+                # Disable TLS 1.0
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Client" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.0\Server" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                
+                # Disable TLS 1.1
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Client" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Client" /v "DisabledByDefault" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server" /v "Enabled" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.1\Server" /v "DisabledByDefault" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                # Enable TLS 1.2 (ensure it's enabled)
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client" /v "Enabled" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Client" /v "DisabledByDefault" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server" /v "Enabled" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\SecurityProviders\SCHANNEL\Protocols\TLS 1.2\Server" /v "DisabledByDefault" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+                
+                Write-Host "✓ Weak SSL/TLS Protocols disabled, TLS 1.2 enabled" -ForegroundColor Green
+                $successCount++
+                $requiresReboot = $true
+            } catch {
+                Write-Host "✗ Failed to configure SSL/TLS protocols: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.EnableSMBSigning) {
+            Write-Host "Applying: Enable SMB Security Signing..." -ForegroundColor Cyan
+            try {
+                # Enable SMB client signing
+                reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanManWorkstation\Parameters" /v "RequireSecuritySignature" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                # Enable SMB server signing
+                reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanManServer\Parameters" /v "RequireSecuritySignature" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                Write-Host "✓ SMB Security Signing enabled" -ForegroundColor Green
+                $successCount++
+                $requiresReboot = $true
+            } catch {
+                Write-Host "✗ Failed to enable SMB security signing: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.DisableIE11) {
+            Write-Host "Applying: Disable Internet Explorer 11..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\SOFTWARE\Microsoft\Internet Explorer\Setup\11.0" /v "DoNotAllowIE11" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ Internet Explorer 11 disabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to disable Internet Explorer 11: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.EnableCertPaddingCheck) {
+            Write-Host "Applying: Enable Certificate Padding Check..." -ForegroundColor Cyan
+            try {
+                # Enable for 64-bit
+                reg add "HKLM\SOFTWARE\Microsoft\Cryptography\Wintrust\Config" /v "EnableCertPaddingCheck" /t REG_SZ /d "1" /f 2>&1 | Out-Null
+                
+                # Enable for 32-bit on 64-bit systems
+                reg add "HKLM\SOFTWARE\Wow6432Node\Microsoft\Cryptography\Wintrust\Config" /v "EnableCertPaddingCheck" /t REG_SZ /d "1" /f 2>&1 | Out-Null
+                
+                Write-Host "✓ Certificate Padding Check enabled" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable certificate padding check: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.RestrictNetworkLocation) {
+            Write-Host "Applying: Restrict Network Location Changes..." -ForegroundColor Cyan
+            try {
+                reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Network Connections" /v "NC_StdDomainUserSetLocation" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                Write-Host "✓ Network Location Changes restricted" -ForegroundColor Green
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to restrict network location changes: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.PreventDeviceEncryption) {
+            Write-Host "Applying: Enable Prevent Device Encryption (Disable BitLocker)..." -ForegroundColor Cyan
+            try {
+                # Microsoft's recommended method to prevent automatic device encryption
+                reg add "HKLM\SYSTEM\CurrentControlSet\Control\BitLocker" /v "PreventDeviceEncryption" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                Write-Host "✓ Device Encryption Prevention enabled (BitLocker auto-start disabled)" -ForegroundColor Green
+                Write-Host "  Note: Not recommended on devices with Windows Recall feature" -ForegroundColor Yellow
+                Write-Host "  Note: Ensure compliance with Windows 11 licensing requirements" -ForegroundColor Yellow
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable device encryption prevention: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+        if ($TweakStates.EnableADRecoveryBackup) {
+            Write-Host "Applying: Enable AD Recovery Key Backup..." -ForegroundColor Cyan
+            try {
+                # Enable Active Directory backup of BitLocker recovery keys
+                reg add "HKLM\SOFTWARE\Policies\Microsoft\FVE" /v "OSRequireActiveDirectoryBackup" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+                
+                Write-Host "✓ AD Recovery Key Backup enabled" -ForegroundColor Green
+                Write-Host "  Note: Requires proper Active Directory configuration" -ForegroundColor Yellow
+                $successCount++
+            } catch {
+                Write-Host "✗ Failed to enable AD recovery key backup: $($_.Exception.Message)" -ForegroundColor Red
+                $failCount++
+            }
+        }
+        
+    } catch {
+        Write-Host "✗ Unexpected error during tweak application: $($_.Exception.Message)" -ForegroundColor Red
+        $failCount++
+    }
+    
+    Write-Host "Tweaks application completed for current system: $successCount successful, $failCount failed" -ForegroundColor Cyan
+    
+    return @{
+        Success = $successCount
+        Failed = $failCount
+        RequiresReboot = $requiresReboot
+    }
+}
+
+function Main {
+    if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Host "This script requires administrator privileges. Please run PowerShell as administrator." -ForegroundColor Red
+        exit 1
+    }
+
+    do {
+        Show-Menu
+        $choice = Read-Host
+        
+        switch ($choice) {
+            "1" { Manage-Configuration }
+            "2" { Manage-Drivers }
+            "3" { 
+                if (-not (Test-RequiredPaths)) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } elseif (-not (Test-MountPathEmpty)) {
+                    Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Manage-PackagesAndFeatures
+                }
+            }
+            "4" { 
+                if (-not (Test-RequiredPaths)) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } elseif (-not (Test-MountPathEmpty)) {
+                    Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Manage-Indexes
+                }
+            }
+            "5" { 
+                if (-not (Test-RequiredPaths)) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } elseif (-not (Test-MountPathEmpty)) {
+                    Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Manage-Editions
+                }
+            }
+            "6" { 
+                if (-not (Test-RequiredPaths)) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } elseif (-not (Test-MountPathEmpty)) {
+                    Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Manage-Conversions
+                }
+            }
+            "7" { 
+                if (-not (Test-RequiredPaths)) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Manage-ISOCreation
+                }
+            }
+            "8" { 
+                if (-not (Test-RequiredPaths)) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Get-WimInfo
+                }
+            }
+            "9" { 
+                if (-not (Test-RequiredPaths)) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } elseif (-not (Test-MountPathEmpty)) {
+                    Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Manage-DesktopFiles
+                }
+            }
+            "10" { 
+                if (-not (Test-RequiredPaths)) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } elseif (-not (Test-MountPathEmpty)) {
+                    Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Manage-Registry
+                }
+            }
+            "11" { 
+                if (-not (Test-RequiredPaths)) {
+                    Write-Host "Please set all required paths first (ISO Path, Mount Path)." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } elseif (-not (Test-MountPathEmpty)) {
+                    Write-Host "Mount path is not empty! Please use the cleanup option first." -ForegroundColor Red
+                    Read-Host "Press Enter to continue"
+                } else {
+                    Mount-IndexOnly
+                }
+            }
+            "12" { Invoke-ManualCleanup }
+            "13" { 
+                Write-Host "Exiting..." -ForegroundColor Yellow
+                Invoke-Cleanup
+                exit 
+            }
+            default { 
+                Write-Host "Invalid selection. Please try again." -ForegroundColor Red
+                Start-Sleep -Seconds 1
+            }
+        }
+    } while ($true)
 }
 
 Main
