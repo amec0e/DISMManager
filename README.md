@@ -37,7 +37,7 @@ MAIN MENU
 ├── 3. Manage Packages and Features
 │   ├── 1. Manage for specific index
 │   ├── 2. Manage for all indexes
-│   ├── 3. Manage Current Live System ⭐ (NEW)
+│   ├── 3. Manage Current Live System
 │   │   ├── SYSTEM PACKAGE MANAGEMENT (.cab/.msu):
 │   │   │   ├── 1. View all installed system packages
 │   │   │   ├── 2. View specific system package info
