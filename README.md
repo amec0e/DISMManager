@@ -12,17 +12,18 @@ MAIN MENU
 │   ├── 3. Set ISO Output Path
 │   ├── 4. Set Driver Path
 │   ├── 5. Set Package Path
-│   ├── 6. Set Conversion Backup Path
-│   ├── 7. Setup Wimlib (Advanced Features)
+│   ├── 6. Set Backup Path
+│   ├── 7. Set Desktop Files Path
+│   ├── 8. Setup Wimlib (Advanced Features)
 │   │   ├── 1. Download Wimlib (opens browser)
 │   │   ├── 2. Set Wimlib Path (after download)
 │   │   ├── 3. Test Wimlib Installation
 │   │   ├── 4. Clear Wimlib Path
 │   │   └── 5. Return to Configuration Menu
-│   ├── 8. Toggle Force Unsigned Drivers
-│   └── 9. Return to Main Menu
+│   ├── 9. Toggle Force Unsigned Drivers
+│   └── 10. Return to Main Menu
 │
-├── 2. Manage Drivers (Add/Remove)
+├── 2. Manage Drivers (Add/Remove/Export)
 │   ├── 1. Add Drivers
 │   │   ├── • Add to specific index
 │   │   └── • Add to all indexes
@@ -36,19 +37,41 @@ MAIN MENU
 ├── 3. Manage Packages and Features
 │   ├── 1. Manage for specific index
 │   ├── 2. Manage for all indexes
-│   └── Per-Index Management Menu:
-│       ├── PACKAGE MANAGEMENT:
-│       │   ├── 1. View all installed packages
-│       │   ├── 2. View specific package info
-│       │   ├── 3. Add package(s)
-│       │   └── 4. Remove package(s)
+│   ├── 3. Manage Current Live System ⭐ (NEW)
+│   │   ├── SYSTEM PACKAGE MANAGEMENT (.cab/.msu):
+│   │   │   ├── 1. View all installed system packages
+│   │   │   ├── 2. View specific system package info
+│   │   │   ├── 3. Add system package(s)
+│   │   │   └── 4. Remove system package(s)
+│   │   ├── APPLICATION PACKAGE MANAGEMENT (.appx/.appxbundle):
+│   │   │   ├── 5. View all provisioned application packages
+│   │   │   ├── 6. Add application package(s)
+│   │   │   └── 7. Remove application package(s)
+│   │   ├── FEATURE MANAGEMENT:
+│   │   │   ├── 8. View all available features
+│   │   │   ├── 9. View specific feature info
+│   │   │   ├── 10. Enable feature(s)
+│   │   │   └── 11. Disable feature(s)
+│   │   └── 12. Return to Main Menu
+│   └── 4. Return to Main Menu
+│   │
+│   └── Per-Index Management Menu (Options 1 & 2):
+│       ├── SYSTEM PACKAGE MANAGEMENT (.cab/.msu):
+│       │   ├── 1. View all installed system packages
+│       │   ├── 2. View specific system package info
+│       │   ├── 3. Add system package(s)
+│       │   └── 4. Remove system package(s)
+│       ├── APPLICATION PACKAGE MANAGEMENT (.appx/.appxbundle):
+│       │   ├── 5. View all provisioned application packages
+│       │   ├── 6. Add application package(s)
+│       │   └── 7. Remove application package(s)
 │       ├── FEATURE MANAGEMENT:
-│       │   ├── 5. View all available features
-│       │   ├── 6. View specific feature info
-│       │   ├── 7. Enable feature(s)
-│       │   └── 8. Disable feature(s)
-│       ├── 9. Commit changes and continue
-│       └── 10. Discard changes and exit
+│       │   ├── 8. View all available features
+│       │   ├── 9. View specific feature info
+│       │   ├── 10. Enable feature(s)
+│       │   └── 11. Disable feature(s)
+│       ├── 12. Commit changes and continue
+│       └── 13. Discard changes and exit
 │
 ├── 4. Manage Indexes (Add/Remove)
 │   ├── 1. View Current Indexes
@@ -87,12 +110,49 @@ MAIN MENU
 │
 ├── 8. View WIM/ESD Information
 │
-├── 9. Mount Index
+├── 9. Manage Desktop Files
+│   ├── 1. Add Desktop Files to Images
+│   │   ├── • Select files to add
+│   │   ├── • Add to specific index
+│   │   └── • Add to all indexes
+│   ├── 2. Remove Desktop Files from Images
+│   └── 3. Return to Main Menu
+│
+├── 10. Manage Registry
+│   ├── 1. Apply Common Tweaks
+│   │   ├── Tweak Selection Interface (19 toggleable options):
+│   │   │   ├── 1. [✓/✗] Disable Windows Search Indexing
+│   │   │   ├── 2. [✓/✗] Disable Telemetry/Data Collection
+│   │   │   ├── 3. [✓/✗] Classic Context Menu (Windows 11)
+│   │   │   ├── 4. [✓/✗] Disable AutoRun/AutoPlay
+│   │   │   ├── 5. [✓/✗] Enable Win32 Long Paths
+│   │   │   ├── 6. [✓/✗] Bypass TPM Requirements (Image only)
+│   │   │   ├── 7. [✓/✗] Bypass RAM Requirements (Image only)
+│   │   │   ├── 8. [✓/✗] Bypass Secure Boot (Image only)
+│   │   │   ├── 9. [✓/✗] Bypass CPU Requirements (Image only)
+│   │   │   ├── 10. [✓/✗] Disable MS Account Requirements (Image only)
+│   │   │   ├── 11. [✓/✗] Disable Weak SSL/TLS Protocols
+│   │   │   ├── 12. [✓/✗] Enable SMB Signing
+│   │   │   ├── 13. [✓/✗] Disable Internet Explorer 11
+│   │   │   ├── 14. [✓/✗] Enable Certificate Padding Check
+│   │   │   ├── 15. [✓/✗] Restrict Network Location Changes
+│   │   │   ├── 16. [✓/✗] Prevent Device Encryption (Disable BitLocker)
+│   │   │   ├── 17. [✓/✗] Enable AD Recovery Key Backup
+│   │   │   ├── 18. Toggle All (Select/Deselect All)
+│   │   │   └── 19. Apply Selected Tweaks
+│   │   │       ├── 1. Apply to current system (live)
+│   │   │       ├── 2. Apply to specific index
+│   │   │       ├── 3. Apply to all indexes
+│   │   │       └── 4. Cancel
+│   │   └── 20. Return to Registry Management
+│   └── 2. Return to Main Menu
+│
+├── 11. Mount Index
 │   ├── • Mount Read-Write (for making changes)
 │   ├── • Mount Read-Only (for viewing only)
 │   └── • Cancel
 │
-├── 10. Cleanup/Unmount
+├── 12. Cleanup/Unmount
 │
-└── 11. Exit
+└── 13. Exit
 ```
